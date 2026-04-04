@@ -197,6 +197,7 @@ while True:
                     )
                     last_sent_time[track_id] = current_time
                     last_sent_speed[track_id] = speed_val
+                    
                 cv2.rectangle(display_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 cv2.putText(display_frame, f"ID:{track_id} {speed_val:.1f} km/h", (x1, y1 - 10),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)

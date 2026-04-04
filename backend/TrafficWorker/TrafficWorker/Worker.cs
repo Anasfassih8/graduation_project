@@ -6,16 +6,19 @@ using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using Npgsql;
 using Dapper;
+using TrafficWorker.services;
 
 public class Worker : BackgroundService
 {
     private readonly ILogger<Worker> _logger;
+    private readonly TrafficService _trafficService = new();
 
-    private IConnection _connection;
-    private IModel _channel;
+    private IConnection _connection; //connection to RabbitMQ
+    private IModel _channel; //communication channel which sends/receives messsages
+    private Timer _timer;
 
-    private HashSet<int> seenVehicles = new();
-    private int totalCount = 0;
+    private HashSet<int> seenVehicles = new(); //tracks unique Vehicle IDs
+    private int totalCount = 0; //total count of unique vehicles
 
     private readonly string _connectionString =
         "Host=localhost;Port=5432;Username=postgres;Password=postgres;Database=postgres";
@@ -39,20 +42,45 @@ public class Worker : BackgroundService
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _timer = new Timer(async _ =>
+        {
+            var metrics = _trafficService.Calculate();
+
+            using var conn = new NpgsqlConnection(_connectionString);
+
+            foreach (var m in metrics)
+            {
+                _logger.LogInformation(
+                    $"Segment {m.SegmentId} | CI: {m.CongestionIndex:F2} | RecSpeed: {m.RecommendedSpeed:F1}");
+
+                string sql = @"
+            INSERT INTO segment_metrics 
+            (segment_id, avg_speed, density, congestion_index, recommended_speed)
+            VALUES (@SegmentId, @AvgSpeed, @Density, @CongestionIndex, @RecommendedSpeed)
+        ";
+
+                await conn.ExecuteAsync(sql, m);
+            }
+
+        }, null, TimeSpan.Zero, TimeSpan.FromSeconds(5));
         var consumer = new EventingBasicConsumer(_channel);
 
         consumer.Received += async (model, ea) =>
         {
+            //convert from byte => string
             var body = ea.Body.ToArray();
             var json = Encoding.UTF8.GetString(body);
 
             try
             {
+                //  DESERIALIZE JSON TO C# OBJECT
                 var vehicle = JsonSerializer.Deserialize<VehicleEvent>(json);
 
                 if (vehicle == null) return;
 
-                // 🚗 COUNT UNIQUE VEHICLES
+                _trafficService.AddVehicle(vehicle);
+
+                //  COUNT UNIQUE VEHICLES
                 if (!seenVehicles.Contains(vehicle.vehicle_id))
                 {
                     seenVehicles.Add(vehicle.vehicle_id);
@@ -61,8 +89,9 @@ public class Worker : BackgroundService
                     _logger.LogInformation($"New Vehicle Count: {totalCount}");
                 }
 
-                // 💾 INSERT INTO POSTGRES
-                using var conn = new NpgsqlConnection(_connectionString);
+                //  INSERT INTO POSTGRES
+                using var conn = new NpgsqlConnection(_connectionString);//needs fixing
+                await conn.OpenAsync();
 
                 string sql = @"
                     INSERT INTO vehicle_events (vehicle_id, speed_kmh, pos_x, pos_y, timestamp)
@@ -78,13 +107,15 @@ public class Worker : BackgroundService
                     vehicle.timestamp
                 });
 
+                
 
-                _channel.BasicAck(ea.DeliveryTag, false);
+
+                _channel.BasicAck(ea.DeliveryTag, false);//processed ==> remove it from queue
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error processing message");
-                _channel.BasicNack(ea.DeliveryTag, false, true);
+                _channel.BasicNack(ea.DeliveryTag, false, true);//not processed ==> put it back in queue 
             }
         };
 
@@ -110,6 +141,7 @@ public class VehicleEvent
 {
     public int vehicle_id { get; set; }
     public double speed_kmh { get; set; }
+
     public Position position { get; set; }
     public DateTime timestamp { get; set; }
 }

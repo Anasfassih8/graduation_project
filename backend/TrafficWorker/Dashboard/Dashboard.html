@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Traffic Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+  }
+
+  .container {
+    padding: 20px;
+  }
+
+  h1 {
+    margin-bottom: 20px;
+  }
+
+  .grid {
+    display: grid;
+    gap: 15px;
+  }
+
+  .cards {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+
+  .segments {
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  }
+
+  .card {
+    background: #1e293b;
+    padding: 15px;
+    border-radius: 10px;
+  }
+
+  .metric {
+    font-size: 1.5em;
+    font-weight: bold;
+  }
+
+  .segment.low { border-left: 5px solid #22c55e; }
+  .segment.medium { border-left: 5px solid #facc15; }
+  .segment.high { border-left: 5px solid #ef4444; }
+
+  canvas {
+    background: #1e293b;
+    border-radius: 10px;
+    padding: 10px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Traffic Dashboard</h1>
+
+  <!-- Summary Cards -->
+  <div id="summaryCards" class="grid cards"></div>
+
+  <!-- Segments -->
+  <h2>Segments</h2>
+  <div id="segments" class="grid segments"></div>
+
+  <!-- Charts -->
+  <h2>Analytics</h2>
+  <canvas id="barChart"></canvas>
+  <canvas id="speedChart"></canvas>
+  <canvas id="congestionChart"></canvas>
+</div>
+
+<script>
+// ================= MOCK DATA =================
+function getMockData() {
+  return Array.from({ length: 6 }, (_, i) => ({
+    segmentId: i,
+    vehicleCount: Math.floor(Math.random() * 50),
+    avgSpeed: Math.floor(Math.random() * 80),
+    density: Math.random() * 100,
+    congestionIndex: Math.random(),
+    recommendedSpeed: Math.floor(Math.random() * 60)
+  }));
+}
+
+// ================= UTILITIES =================
+function getCongestionLevel(index) {
+  if (index < 0.4) return 'low';
+  if (index < 0.7) return 'medium';
+  return 'high';
+}
+
+// ================= SUMMARY =================
+function renderSummary(data) {
+  const totalVehicles = data.reduce((sum, s) => sum + s.vehicleCount, 0);
+  const avgSpeed = (data.reduce((sum, s) => sum + s.avgSpeed, 0) / data.length).toFixed(1);
+  const avgCongestion = (data.reduce((sum, s) => sum + s.congestionIndex, 0) / data.length).toFixed(2);
+
+  // NEW: overall recommended speed (street-level)
+  const overallRecommended = (data.reduce((sum, s) => sum + s.recommendedSpeed, 0) / data.length).toFixed(1);
+
+  const worst = data.reduce((max, s) => s.congestionIndex > max.congestionIndex ? s : max);
+
+  const cards = [
+    { label: 'Total Vehicles', value: totalVehicles },
+    { label: 'Average Speed', value: avgSpeed + ' km/h' },
+    { label: 'Avg Congestion', value: avgCongestion },
+    { label: 'Recommended Speed', value: overallRecommended + ' km/h' },
+    { label: 'Worst Segment', value: 'Segment ' + worst.segmentId }
+  ];
+
+  const container = document.getElementById('summaryCards');
+  container.innerHTML = cards.map(c => `
+    <div class="card">
+      <div>${c.label}</div>
+      <div class="metric">${c.value}</div>
+    </div>
+  `).join('');
+}
+
+// ================= SEGMENTS =================
+function renderSegments(data) {
+  const container = document.getElementById('segments');
+  container.innerHTML = data.map(s => {
+    const level = getCongestionLevel(s.congestionIndex);
+    return `
+      <div class="card segment ${level}">
+        <h3>Segment ${s.segmentId}</h3>
+        <p>Vehicles: ${s.vehicleCount}</p>
+        <p>Speed: ${s.avgSpeed} km/h</p>
+        <p>Congestion: ${s.congestionIndex.toFixed(2)}</p>
+        <p>Recommended: ${s.recommendedSpeed} km/h</p>
+      </div>
+    `;
+  }).join('');
+}
+
+// ================= CHARTS =================
+let barChart, speedChart, congestionChart;
+
+function initCharts() {
+  barChart = new Chart(document.getElementById('barChart'), {
+    type: 'bar',
+    data: { labels: [], datasets: [{ label: 'Congestion', data: [] }] },
+  });
+
+  speedChart = new Chart(document.getElementById('speedChart'), {
+    type: 'line',
+    data: { labels: [], datasets: [{ label: 'Avg Speed', data: [] }] },
+  });
+
+  congestionChart = new Chart(document.getElementById('congestionChart'), {
+    type: 'line',
+    data: { labels: [], datasets: [{ label: 'Congestion Over Time', data: [] }] },
+  });
+}
+
+const history = {
+  time: [],
+  speed: [],
+  congestion: []
+};
+
+function updateCharts(data) {
+  const labels = data.map(s => 'Seg ' + s.segmentId);
+  const congestion = data.map(s => s.congestionIndex);
+
+  barChart.data.labels = labels;
+  barChart.data.datasets[0].data = congestion;
+  barChart.update();
+
+  const avgSpeed = data.reduce((sum, s) => sum + s.avgSpeed, 0) / data.length;
+  const avgCong = data.reduce((sum, s) => sum + s.congestionIndex, 0) / data.length;
+
+  const timeLabel = new Date().toLocaleTimeString();
+
+  history.time.push(timeLabel);
+  history.speed.push(avgSpeed);
+  history.congestion.push(avgCong);
+
+  if (history.time.length > 10) {
+    history.time.shift();
+    history.speed.shift();
+    history.congestion.shift();
+  }
+
+  speedChart.data.labels = history.time;
+  speedChart.data.datasets[0].data = history.speed;
+  speedChart.update();
+
+  congestionChart.data.labels = history.time;
+  congestionChart.data.datasets[0].data = history.congestion;
+  congestionChart.update();
+}
+
+// ================= DATA FETCH =================
+async function fetchData() {
+  // Replace this later with:
+  // return fetch('/api/traffic/segments').then(res => res.json());
+  return getMockData();
+}
+
+// ================= MAIN =================
+async function updateDashboard() {
+  const data = await fetchData();
+  renderSummary(data);
+  renderSegments(data);
+  updateCharts(data);
+}
+
+function init() {
+  initCharts();
+  updateDashboard();
+  setInterval(updateDashboard, 5000);
+}
+
+init();
+</script>
+</body>
+</html>
