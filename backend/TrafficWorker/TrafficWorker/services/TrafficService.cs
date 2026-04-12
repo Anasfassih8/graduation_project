@@ -10,9 +10,9 @@ namespace TrafficWorker.services
     public class TrafficService
     {
         private const double RoadLength = 1000.0;
-        private const double SegmentLength = 100.0;
+        private const double SegmentLength = 10.0;
         private const double FreeFlowSpeed = 60.0;
-        private const double MaxDensity = 100.0;
+        private const double MaxDensity = 200.0;
 
         private readonly Dictionary<int, List<VehicleEvent>> _segments = new();
         private readonly object _lock = new();
@@ -21,32 +21,37 @@ namespace TrafficWorker.services
         private int GetSegmentIndex(double position) => (int)(position / SegmentLength);
         public void AddVehicle(VehicleEvent v)
         {
+            Console.WriteLine($"Adding vehicle {v.vehicle_id} at X={v.position.x}");
             lock (_lock)
             {
                 int segmentId = GetSegmentIndex(v.position.x);
+                Console.WriteLine($"Assigned to segment {segmentId}");
 
                 if (!_segments.ContainsKey(segmentId))
                     _segments[segmentId] = new List<VehicleEvent>();
 
                 _segments[segmentId].Add(v);
+                Console.WriteLine($"Segment {segmentId} now has {_segments[segmentId].Count} vehicles");
             }
         }
+
         public List<SegmentMetrics> Calculate()
         {
+            Console.WriteLine($"Total segments: {_segments.Count}");
             lock (_lock)
             {
-                var now = DateTime.UtcNow;
+                var now = DateTime.Now;
                 var window = TimeSpan.FromSeconds(10);
 
                 var results = new List<SegmentMetrics>();
 
                 foreach (var segment in _segments)
                 {
+                    Console.WriteLine($"Processing segment {segment.Key} with {segment.Value.Count} vehicles");
                     int segmentId = segment.Key;
 
-                    var vehicles = segment.Value
-                        .Where(v => now - v.timestamp <= window)
-                        .ToList();
+                    var vehicles = segment.Value;
+                     
 
                     if (vehicles.Count == 0) continue;
 
@@ -73,7 +78,7 @@ namespace TrafficWorker.services
                         RecommendedSpeed = recommendedSpeed
                     });
                 }
-
+                _segments.Clear();
                 return results;
             }
         }

@@ -1,9 +1,11 @@
 var builder = WebApplication.CreateBuilder(args);
 
-// Services
-builder.Services.AddOpenApi();
+// ================= SERVICES =================
+
+// Enable controllers (for your API endpoints)
 builder.Services.AddControllers();
 
+// Enable CORS (so your dashboard can call the API)
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll",
@@ -14,28 +16,15 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Dev tools
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-}
+// ================= MIDDLEWARE =================
 
+// Enable HTTPS redirection (optional but good practice)
 app.UseHttpsRedirection();
 
+// Enable CORS
 app.UseCors("AllowAll");
 
-// ?? THIS IS THE IMPORTANT LINE
+// Map controller routes (VERY IMPORTANT)
 app.MapControllers();
-
-// (optional) you can delete this later
-app.MapGet("/weatherforecast", () =>
-{
-    return Enumerable.Range(1, 5).Select(index =>
-        new
-        {
-            Date = DateTime.Now.AddDays(index),
-            Temp = Random.Shared.Next(-20, 55)
-        });
-});
 
 app.Run();

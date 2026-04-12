@@ -19,14 +19,14 @@ namespace Traffic.API.Controllers
             await conn.OpenAsync();
 
             string sql = @"
-                SELECT DISTINCT ON (segment_id)
+                SELECT 
                     segment_id AS SegmentId,
                     avg_speed AS AvgSpeed,
                     density AS Density,
                     congestion_index AS CongestionIndex,
                     recommended_speed AS RecommendedSpeed
                 FROM segment_metrics
-                ORDER BY segment_id, id DESC
+                ORDER BY segment_id
             ";
 
             var result = await conn.QueryAsync(sql);

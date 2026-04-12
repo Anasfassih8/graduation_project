@@ -45,11 +45,14 @@ public class Worker : BackgroundService
         _timer = new Timer(async _ =>
         {
             var metrics = _trafficService.Calculate();
+            Console.WriteLine("Calculating metrics...");
 
             using var conn = new NpgsqlConnection(_connectionString);
+            await conn.OpenAsync();
 
             foreach (var m in metrics)
             {
+                Console.WriteLine($"Segment {m.SegmentId} CI: {m.CongestionIndex}");
                 _logger.LogInformation(
                     $"Segment {m.SegmentId} | CI: {m.CongestionIndex:F2} | RecSpeed: {m.RecommendedSpeed:F1}");
 

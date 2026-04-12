@@ -198,11 +198,27 @@ function updateCharts(data) {
 }
 
 // ================= DATA FETCH =================
+
 async function fetchData() {
-  // Replace this later with:
-  // return fetch('/api/traffic/segments').then(res => res.json());
-  return getMockData();
+  const res = await fetch("http://localhost:5052/api/traffic/segments");
+  const raw = await res.json();
+
+  const map = new Map();
+
+  raw.forEach(s => {
+    map.set(s.segmentid, s); // keeps latest
+  });
+
+  return Array.from(map.values()).map(s => ({
+    segmentId: s.segmentid,
+    vehicleCount: s.vehiclecount || 0,
+    avgSpeed: s.avgspeed,
+    density: s.density,
+    congestionIndex: s.congestionindex,
+    recommendedSpeed: s.recommendedspeed
+  }));
 }
+
 
 // ================= MAIN =================
 async function updateDashboard() {
