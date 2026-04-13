@@ -6,72 +6,116 @@
 <title>Traffic Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-  body {
-    margin: 0;
-    font-family: Arial, sans-serif;
-    background: #0f172a;
-    color: #e2e8f0;
-  }
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #0f172a;
+  color: #e2e8f0;
+  overflow: hidden;
+}
 
-  .container {
-    padding: 20px;
-  }
+.container {
+  padding: 15px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
 
-  h1 {
-    margin-bottom: 20px;
-  }
+/* GRID LAYOUT */
+.top {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
 
-  .grid {
-    display: grid;
-    gap: 15px;
-  }
+.bottom {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  flex: 1;
+}
 
-  .cards {
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  }
+/* CARDS */
+.card {
+  background: #1e293b;
+  padding: 12px;
+  border-radius: 12px;
+  box-shadow: 0 0 10px rgba(0,0,0,0.3);
+}
 
-  .segments {
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  }
+/* SUMMARY */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
 
-  .card {
-    background: #1e293b;
-    padding: 15px;
-    border-radius: 10px;
-  }
+.metric {
+  font-size: 1.3em;
+  font-weight: bold;
+}
 
-  .metric {
-    font-size: 1.5em;
-    font-weight: bold;
-  }
+/* SEGMENTS */
+.segments {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  max-height: 250px;
+  overflow-y: auto;
+}
 
-  .segment.low { border-left: 5px solid #22c55e; }
-  .segment.medium { border-left: 5px solid #facc15; }
-  .segment.high { border-left: 5px solid #ef4444; }
+.segment.low { border-left: 5px solid #22c55e; }
+.segment.medium { border-left: 5px solid #facc15; }
+.segment.high { border-left: 5px solid #ef4444; }
 
-  canvas {
-    background: #1e293b;
-    border-radius: 10px;
-    padding: 10px;
-  }
+/* CHARTS */
+canvas {
+  width: 100% !important;
+  height: 180px !important;
+}
 </style>
 </head>
 <body>
 <div class="container">
-  <h1>Traffic Dashboard</h1>
 
-  <!-- Summary Cards -->
-  <div id="summaryCards" class="grid cards"></div>
+  <!-- TOP SECTION -->
+  <div class="top">
 
-  <!-- Segments -->
-  <h2>Segments</h2>
-  <div id="segments" class="grid segments"></div>
+    <!-- SUMMARY -->
+    <div class="card">
+      <h3>Overview</h3>
+      <div id="summaryCards" class="cards"></div>
+    </div>
 
-  <!-- Charts -->
-  <h2>Analytics</h2>
-  <canvas id="barChart"></canvas>
-  <canvas id="speedChart"></canvas>
-  <canvas id="congestionChart"></canvas>
+    <!-- SEGMENTS -->
+    <div class="card">
+      <h3>Segments</h3>
+      <div id="segments" class="segments"></div>
+    </div>
+
+  </div>
+
+  <!-- BOTTOM SECTION (CHARTS) -->
+  <div class="bottom">
+
+    <div class="card">
+      <h3>Congestion</h3>
+      <canvas id="barChart"></canvas>
+    </div>
+
+    <div class="card">
+      <h3>Speed Trend</h3>
+      <canvas id="speedChart"></canvas>
+    </div>
+
+    <div class="card">
+      <h3>Congestion Trend</h3>
+      <canvas id="congestionChart"></canvas>
+    </div>
+
+  </div>
+
 </div>
 
 <script>
@@ -132,7 +176,7 @@ function renderSegments(data) {
         <h3>Segment ${s.segmentId}</h3>
         <p>Vehicles: ${s.vehicleCount}</p>
         <p>Speed: ${s.avgSpeed} km/h</p>
-        <p>Congestion: ${s.congestionIndex.toFixed(2)}</p>
+        <p>Congestion: ${(s.congestionIndex * 100).toFixed(0)}%</p>
         <p>Recommended: ${s.recommendedSpeed} km/h</p>
       </div>
     `;
@@ -206,16 +250,16 @@ async function fetchData() {
   const map = new Map();
 
   raw.forEach(s => {
-    map.set(s.segmentid, s); // keeps latest
+    map.set(s.segmentId, s); // keeps latest
   });
 
   return Array.from(map.values()).map(s => ({
-    segmentId: s.segmentid,
-    vehicleCount: s.vehiclecount || 0,
-    avgSpeed: s.avgspeed,
+    segmentId: s.segmentId,
+    vehicleCount: s.vehicleCount || 0,
+    avgSpeed: s.avgSpeed,
     density: s.density,
-    congestionIndex: s.congestionindex,
-    recommendedSpeed: s.recommendedspeed
+    congestionIndex: s.congestionIndex,
+    recommendedSpeed: s.recommendedSpeed
   }));
 }
 

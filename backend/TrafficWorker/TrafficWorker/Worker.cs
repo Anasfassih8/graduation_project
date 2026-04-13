@@ -58,8 +58,8 @@ public class Worker : BackgroundService
 
                 string sql = @"
             INSERT INTO segment_metrics 
-            (segment_id, avg_speed, density, congestion_index, recommended_speed)
-            VALUES (@SegmentId, @AvgSpeed, @Density, @CongestionIndex, @RecommendedSpeed)
+            (segment_id, avg_speed, density, congestion_index, recommended_speed, vehicle_count)
+            VALUES (@SegmentId, @AvgSpeed, @Density, @CongestionIndex, @RecommendedSpeed, @VehicleCount)
         ";
 
                 await conn.ExecuteAsync(sql, m);

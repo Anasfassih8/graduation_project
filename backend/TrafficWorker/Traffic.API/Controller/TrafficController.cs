@@ -24,12 +24,13 @@ namespace Traffic.API.Controllers
                     avg_speed AS AvgSpeed,
                     density AS Density,
                     congestion_index AS CongestionIndex,
-                    recommended_speed AS RecommendedSpeed
+                    recommended_speed AS RecommendedSpeed,
+                    vehicle_count AS VehicleCount
                 FROM segment_metrics
                 ORDER BY segment_id
             ";
 
-            var result = await conn.QueryAsync(sql);
+            var result = await conn.QueryAsync<SegmentDto>(sql);
 
             return Ok(result);
         }
@@ -46,9 +47,11 @@ namespace Traffic.API.Controllers
                     segment_id AS SegmentId,
                     avg_speed AS AvgSpeed,
                     congestion_index AS CongestionIndex,
-                    recommended_speed AS RecommendedSpeed
+                    recommended_speed AS RecommendedSpeed,
+                    vehicle_count AS VehicleCount,
+                    timestamp
                 FROM segment_metrics
-                ORDER BY segment_id, id DESC
+                ORDER BY segment_id, timestamp DESC
             ";
 
             var segments = (await conn.QueryAsync<SegmentDto>(sql)).ToList();
@@ -56,8 +59,10 @@ namespace Traffic.API.Controllers
             if (!segments.Any())
                 return Ok(new { });
 
-            var totalVehicles = segments.Count; // simplified for now
-            var avgSpeed = segments.Average(s => s.AvgSpeed);
+            var totalVehicles = segments.Sum(s => s.VehicleCount);
+            var avgSpeed = totalVehicles == 0
+            ? 0
+            : segments.Sum(s => s.AvgSpeed * s.VehicleCount) / totalVehicles;
             var avgCongestion = segments.Average(s => s.CongestionIndex);
 
             var worst = segments.OrderByDescending(s => s.CongestionIndex).First();
@@ -82,5 +87,7 @@ namespace Traffic.API.Controllers
         public double AvgSpeed { get; set; }
         public double CongestionIndex { get; set; }
         public double RecommendedSpeed { get; set; }
+
+        public double VehicleCount { get; set; }
     }
 }

@@ -10,15 +10,16 @@ namespace TrafficWorker.services
     public class TrafficService
     {
         private const double RoadLength = 1000.0;
-        private const double SegmentLength = 10.0;
-        private const double FreeFlowSpeed = 60.0;
+        private const double SegmentLength = 1.0;
         private const double MaxDensity = 200.0;
+        private const double MinX = 0.0;
 
         private readonly Dictionary<int, List<VehicleEvent>> _segments = new();
+        private readonly TrafficPolicyService _policy=new();
         private readonly object _lock = new();
 
 
-        private int GetSegmentIndex(double position) => (int)(position / SegmentLength);
+        private int GetSegmentIndex(double position) => (int)((position -MinX) / SegmentLength);
         public void AddVehicle(VehicleEvent v)
         {
             Console.WriteLine($"Adding vehicle {v.vehicle_id} at X={v.position.x}");
@@ -41,6 +42,15 @@ namespace TrafficWorker.services
             lock (_lock)
             {
                 var now = DateTime.Now;
+                var dayType = _policy.GetDayType(now);
+                var period = _policy.GetTrafficPeriod(now);
+
+                // For now assume one road type
+                var roadType = RoadType.MainRoad;
+
+                var baseSpeed = _policy.GetBaseSpeed(roadType);
+                var adjustedSpeed = _policy.AdjustSpeed(baseSpeed,dayType,period);
+
                 var window = TimeSpan.FromSeconds(10);
 
                 var results = new List<SegmentMetrics>();
@@ -56,17 +66,20 @@ namespace TrafficWorker.services
                     if (vehicles.Count == 0) continue;
 
                     int count = vehicles.Count;
-                    double avgSpeed = vehicles.Average(v => v.speed_kmh);
+                    double avgSpeed = Math.Min(
+                                                vehicles.Average(v => v.speed_kmh),
+                                                adjustedSpeed
+                                            );
 
-                    double density = count / (SegmentLength / 1000.0);
+                    double density = count / SegmentLength;
 
-                    double densityNorm = density / MaxDensity;
-                    double speedNorm = (FreeFlowSpeed - avgSpeed) / FreeFlowSpeed;
+                    double densityNorm = Math.Min(density / MaxDensity, 1);
+                    double speedNorm = (adjustedSpeed - avgSpeed) / adjustedSpeed;
 
                     double ci = (0.6 * densityNorm) + (0.4 * speedNorm);
                     ci = Math.Clamp(ci, 0, 1);
 
-                    double recommendedSpeed = FreeFlowSpeed * (1 - ci * 0.7);
+                    double recommendedSpeed = adjustedSpeed * (1 - ci * 0.7);
 
                     results.Add(new SegmentMetrics
                     {
@@ -85,7 +98,18 @@ namespace TrafficWorker.services
 
         public double GetStreetRecommendedSpeed(List<SegmentMetrics> segments)
         {
-            if (!segments.Any()) return FreeFlowSpeed;
+            var now = DateTime.Now;
+
+            var dayType = _policy.GetDayType(now);
+            var period = _policy.GetTrafficPeriod(now);
+
+            var roadType = RoadType.MainRoad;
+
+            var baseSpeed = _policy.GetBaseSpeed(roadType);
+            var adjustedSpeed = _policy.AdjustSpeed(baseSpeed,dayType,period);
+
+            // If no data → return intelligent default (NOT static)
+            if (!segments.Any()) return adjustedSpeed;
 
             // safest value = worst segment
             return segments.Min(s => s.RecommendedSpeed);
