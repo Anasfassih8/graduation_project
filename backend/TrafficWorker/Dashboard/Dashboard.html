@@ -25,7 +25,7 @@ body {
 /* GRID LAYOUT */
 .top {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 250px;
   gap: 10px;
 }
 
@@ -74,6 +74,32 @@ canvas {
   width: 100% !important;
   height: 180px !important;
 }
+
+.traffic-light {
+  width: 50px;
+  padding: 8px;
+  background: #111;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.light {
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  opacity: 0.2;
+}
+
+.red { background: #ef4444; }
+.yellow { background: #facc15; }
+.green { background: #22c55e; }
+
+.light.active {
+  opacity: 1;
+  box-shadow: 0 0 8px rgba(255,255,255,0.6);
+}
 </style>
 </head>
 <body>
@@ -93,6 +119,26 @@ canvas {
       <h3>Segments</h3>
       <div id="segments" class="segments"></div>
     </div>
+
+    <div class="card">
+      <h3>Traffic Light</h3>
+
+      <div style="display:flex; align-items:center; gap:15px;">
+
+        <div class="traffic-light">
+          <div id="redLight" class="light red"></div>
+          <div id="yellowLight" class="light yellow"></div>
+          <div id="greenLight" class="light green"></div>
+        </div>
+
+        <div>
+          <div id="lightState">STATE: --</div>
+          <div id="lightTimer">Time: --</div>
+          <div id="lightNext">Next: --</div>
+        </div>
+
+    </div>
+</div>
 
   </div>
 
@@ -263,13 +309,84 @@ async function fetchData() {
   }));
 }
 
+let currentTimer = 0;
+let countdownInterval = null;
+
+async function fetchLight() {
+  const res = await fetch("http://localhost:5052/api/traffic/light");
+  return await res.json();
+}
+
+function renderTrafficLight(light) {
+  if (!light) return;
+
+  const red = document.getElementById("redLight");
+  const yellow = document.getElementById("yellowLight");
+  const green = document.getElementById("greenLight");
+
+  red.classList.remove("active");
+  yellow.classList.remove("active");
+  green.classList.remove("active");
+
+  if (light.state === "RED") red.classList.add("active");
+  if (light.state === "YELLOW") yellow.classList.add("active");
+  if (light.state === "GREEN") green.classList.add("active");
+
+  document.getElementById("lightState").innerText = "STATE: " + light.state;
+  document.getElementById("lightNext").innerText = "Next: " + light.nextState;
+
+  const now = new Date();
+  const start = new Date(light.timeStamp + "Z");
+  const elapsed = Math.floor((now - start) / 1000);
+
+  const remaining = Math.max(0, light.duration - elapsed);
+  currentTimer = remaining;
+
+  console.log("NOW:", now);
+  console.log("START:", start);
+  console.log("ELAPSED:", elapsed);
+  console.log("REMAINING:", remaining);
+  console.log("RAW TIMESTAMP:", light.timeStamp);
+
+  document.getElementById("lightTimer").innerText =
+  "Time: " + remaining + " s";
+  
+  if (
+    window.lastState !== light.state ||
+    window.lastTimestamp !== light.timeStamp
+  ) {
+    window.lastState = light.state;
+    window.lastTimestamp = light.timeStamp;
+    
+    if (countdownInterval) clearInterval(countdownInterval);
+    
+    currentTimer = remaining;
+    
+    countdownInterval = setInterval(() => {
+      if (currentTimer <= 0) {
+        document.getElementById("lightTimer").innerText = "Time: 0 s";
+        return;
+      }
+
+      document.getElementById("lightTimer").innerText =
+        "Time: " + currentTimer + " s";
+
+      currentTimer--;
+    }, 1000);
+
+  
+}
+}
+
 
 // ================= MAIN =================
 async function updateDashboard() {
   const data = await fetchData();
+  const light = await fetchLight();
   renderSummary(data);
   renderSegments(data);
   updateCharts(data);
+  renderTrafficLight(light);
 }
 
 function init() {

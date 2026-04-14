@@ -12,6 +12,8 @@ public class Worker : BackgroundService
 {
     private readonly ILogger<Worker> _logger;
     private readonly TrafficService _trafficService = new();
+    private readonly TrafficLightService _trafficLightService;
+    
 
     private IConnection _connection; //connection to RabbitMQ
     private IModel _channel; //communication channel which sends/receives messsages
@@ -23,9 +25,12 @@ public class Worker : BackgroundService
     private readonly string _connectionString =
         "Host=localhost;Port=5432;Username=postgres;Password=postgres;Database=postgres";
 
-    public Worker(ILogger<Worker> logger)
+    public Worker(
+    ILogger<Worker> logger,
+    TrafficLightService trafficLightService)
     {
         _logger = logger;
+        _trafficLightService = trafficLightService;
 
         var factory = new ConnectionFactory() { HostName = "localhost" };
         _connection = factory.CreateConnection();
@@ -45,7 +50,6 @@ public class Worker : BackgroundService
         _timer = new Timer(async _ =>
         {
             var metrics = _trafficService.Calculate();
-            Console.WriteLine("Calculating metrics...");
 
             using var conn = new NpgsqlConnection(_connectionString);
             await conn.OpenAsync();
@@ -63,6 +67,27 @@ public class Worker : BackgroundService
         ";
 
                 await conn.ExecuteAsync(sql, m);
+            }
+            //  STREET LEVEL SPEED
+            double streetSpeed = _trafficService.GetStreetRecommendedSpeed(metrics);
+
+            //  TRAFFIC LIGHT DECISION
+            var light = _trafficLightService.Calculate(streetSpeed);
+
+            if (light.IsNewCycle)
+            {
+
+                //  LOG IT
+                _logger.LogInformation(
+                    $"🚦 Light: {light.State} -> {light.NextState} | Duration: {light.Duration}s | Speed: {light.RecommendedSpeed:F1}"
+                );
+
+                    string lightSql = @"
+                        INSERT INTO traffic_light (state, next_state, duration, recommended_speed)
+                        VALUES (@State, @NextState, @Duration, @RecommendedSpeed)
+                        ";
+
+                await conn.ExecuteAsync(lightSql, light);
             }
 
         }, null, TimeSpan.Zero, TimeSpan.FromSeconds(5));

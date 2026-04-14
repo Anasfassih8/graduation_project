@@ -79,6 +79,33 @@ namespace Traffic.API.Controllers
                 recommendedSpeed = streetSpeed
             });
         }
+
+        // ================= TRAFFIC LIGHT =================
+        [HttpGet("light")]
+        public async Task<IActionResult> GetTrafficLight()
+        {
+            using var conn = new NpgsqlConnection(_connectionString);
+            await conn.OpenAsync();
+
+            string sql = @"
+        SELECT 
+            state AS State,
+            next_state AS NextState,
+            duration AS Duration,
+            recommended_speed AS RecommendedSpeed,
+            timestamp AS TimeStamp
+        FROM traffic_light
+        ORDER BY timestamp DESC
+        LIMIT 1
+    ";
+
+            var result = await conn.QueryFirstOrDefaultAsync<TrafficLightDto>(sql);
+
+            if (result == null)
+                return Ok(new { });
+
+            return Ok(result);
+        }
     }
 
     public class SegmentDto
@@ -89,5 +116,15 @@ namespace Traffic.API.Controllers
         public double RecommendedSpeed { get; set; }
 
         public double VehicleCount { get; set; }
+    }
+
+    public class TrafficLightDto
+    {
+        public string State { get; set; }
+        public string NextState { get; set; }
+        public int Duration { get; set; }
+        public double RecommendedSpeed { get; set; }
+
+        public DateTime TimeStamp { get; set; }
     }
 }
