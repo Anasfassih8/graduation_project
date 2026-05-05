@@ -15,11 +15,11 @@ namespace TrafficWorker.services
         private const double MinX = 0.0;
 
         private readonly Dictionary<int, List<VehicleEvent>> _segments = new();
-        private readonly TrafficPolicyService _policy=new();
+        private readonly TrafficPolicyService _policy = new();
         private readonly object _lock = new();
 
 
-        private int GetSegmentIndex(double position) => (int)((position -MinX) / SegmentLength);
+        private int GetSegmentIndex(double position) => (int)((position - MinX) / SegmentLength);
         public void AddVehicle(VehicleEvent v)
         {
             Console.WriteLine($"Adding vehicle {v.vehicle_id} at X={v.position.x}");
@@ -49,7 +49,7 @@ namespace TrafficWorker.services
                 var roadType = RoadType.MainRoad;
 
                 var baseSpeed = _policy.GetBaseSpeed(roadType);
-                var adjustedSpeed = _policy.AdjustSpeed(baseSpeed,dayType,period);
+                var adjustedSpeed = _policy.AdjustSpeed(baseSpeed, dayType, period);
 
                 var window = TimeSpan.FromSeconds(10);
 
@@ -61,7 +61,7 @@ namespace TrafficWorker.services
                     int segmentId = segment.Key;
 
                     var vehicles = segment.Value;
-                     
+
 
                     if (vehicles.Count == 0) continue;
 
@@ -106,7 +106,7 @@ namespace TrafficWorker.services
             var roadType = RoadType.MainRoad;
 
             var baseSpeed = _policy.GetBaseSpeed(roadType);
-            var adjustedSpeed = _policy.AdjustSpeed(baseSpeed,dayType,period);
+            var adjustedSpeed = _policy.AdjustSpeed(baseSpeed, dayType, period);
 
             // If no data → return intelligent default (NOT static)
             if (!segments.Any()) return adjustedSpeed;

@@ -173,6 +173,7 @@ while True:
                 if should_send:
 
                     event = {
+                        "road_id": "road_1",
                         "vehicle_id": int(track_id),
                         "timestamp": datetime.utcnow().isoformat(),
                         "speed_kmh": round(float(speed_val), 2),

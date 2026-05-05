@@ -13,7 +13,7 @@ public class Worker : BackgroundService
     private readonly ILogger<Worker> _logger;
     private readonly TrafficService _trafficService = new();
     private readonly TrafficLightService _trafficLightService;
-    
+
 
     private IConnection _connection; //connection to RabbitMQ
     private IModel _channel; //communication channel which sends/receives messsages
@@ -82,7 +82,7 @@ public class Worker : BackgroundService
                     $"🚦 Light: {light.State} -> {light.NextState} | Duration: {light.Duration}s | Speed: {light.RecommendedSpeed:F1}"
                 );
 
-                    string lightSql = @"
+                string lightSql = @"
                         INSERT INTO traffic_light (state, next_state, duration, recommended_speed)
                         VALUES (@State, @NextState, @Duration, @RecommendedSpeed)
                         ";
@@ -95,6 +95,7 @@ public class Worker : BackgroundService
 
         consumer.Received += async (model, ea) =>
         {
+            using var conn = new NpgsqlConnection(_connectionString);
             //convert from byte => string
             var body = ea.Body.ToArray();
             var json = Encoding.UTF8.GetString(body);
@@ -115,10 +116,20 @@ public class Worker : BackgroundService
                     totalCount++;
 
                     _logger.LogInformation($"New Vehicle Count: {totalCount}");
+
+                    // INSERT TOTAL COUNT INTO DB
+                    await conn.OpenAsync();
+
+                    string statsSql = @"
+                                        INSERT INTO vehicle_stats (total_count)
+                                        VALUES (@TotalCount)
+                                    ";
+
+                    await conn.ExecuteAsync(statsSql, new { TotalCount = totalCount });
                 }
 
                 //  INSERT INTO POSTGRES
-                using var conn = new NpgsqlConnection(_connectionString);//needs fixing
+               
                 await conn.OpenAsync();
 
                 string sql = @"
@@ -135,7 +146,7 @@ public class Worker : BackgroundService
                     vehicle.timestamp
                 });
 
-                
+
 
 
                 _channel.BasicAck(ea.DeliveryTag, false);//processed ==> remove it from queue

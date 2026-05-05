@@ -106,6 +106,24 @@ namespace Traffic.API.Controllers
 
             return Ok(result);
         }
+
+        [HttpGet("vehicle-count")]
+        public async Task<IActionResult> GetVehicleCount()
+        {
+            using var conn = new NpgsqlConnection(_connectionString);
+            await conn.OpenAsync();
+
+            string sql = @"
+        SELECT total_count
+        FROM vehicle_stats
+        ORDER BY timestamp DESC
+        LIMIT 1
+    ";
+
+            var count = await conn.QueryFirstOrDefaultAsync<int>(sql);
+
+            return Ok(new { totalCount = count });
+        }
     }
 
     public class SegmentDto

@@ -185,8 +185,7 @@ function getCongestionLevel(index) {
 }
 
 // ================= SUMMARY =================
-function renderSummary(data) {
-  const totalVehicles = data.reduce((sum, s) => sum + s.vehicleCount, 0);
+function renderSummary(data,totalVehicles) {
   const avgSpeed = (data.reduce((sum, s) => sum + s.avgSpeed, 0) / data.length).toFixed(1);
   const avgCongestion = (data.reduce((sum, s) => sum + s.congestionIndex, 0) / data.length).toFixed(2);
 
@@ -299,6 +298,8 @@ async function fetchData() {
     map.set(s.segmentId, s); // keeps latest
   });
 
+
+  
   return Array.from(map.values()).map(s => ({
     segmentId: s.segmentId,
     vehicleCount: s.vehicleCount || 0,
@@ -307,6 +308,11 @@ async function fetchData() {
     congestionIndex: s.congestionIndex,
     recommendedSpeed: s.recommendedSpeed
   }));
+}
+async function fetchVehicleCount() {
+  const res = await fetch("http://localhost:5052/api/traffic/vehicle-count");
+  const data = await res.json();
+  return data.totalCount;
 }
 
 let currentTimer = 0;
@@ -381,12 +387,18 @@ function renderTrafficLight(light) {
 
 // ================= MAIN =================
 async function updateDashboard() {
-  const data = await fetchData();
-  const light = await fetchLight();
-  renderSummary(data);
-  renderSegments(data);
-  updateCharts(data);
-  renderTrafficLight(light);
+  try {
+    const data = await fetchData();
+    const totalVehicles = await fetchVehicleCount();
+    const light = await fetchLight();
+
+    renderSummary(data, totalVehicles);
+    renderSegments(data);
+    updateCharts(data);
+    renderTrafficLight(light);
+  } catch (err) {
+    console.error("Dashboard error:", err);
+  }
 }
 
 function init() {

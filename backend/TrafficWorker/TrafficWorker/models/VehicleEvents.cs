@@ -9,7 +9,7 @@ namespace TrafficWorker.models
     public class VehicleEvents
     {
         public int VehicleId { get; set; }
-        public double Position { get; set; } // meters
+        public Position Position { get; set; } // meters
         public double Speed { get; set; }    // km/h
         public DateTime Timestamp { get; set; }
     }
