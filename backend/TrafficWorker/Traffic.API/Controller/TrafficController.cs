@@ -42,41 +42,43 @@ namespace Traffic.API.Controllers
             using var conn = new NpgsqlConnection(_connectionString);
             await conn.OpenAsync();
 
-            string sql = @"
-                SELECT DISTINCT ON (segment_id)
-                    segment_id AS SegmentId,
-                    avg_speed AS AvgSpeed,
-                    congestion_index AS CongestionIndex,
-                    recommended_speed AS RecommendedSpeed,
-                    vehicle_count AS VehicleCount,
-                    timestamp
-                FROM segment_metrics
-                ORDER BY segment_id, timestamp DESC
-            ";
-
-            var segments = (await conn.QueryAsync<SegmentDto>(sql)).ToList();
+            string segmentSql = @"
+        SELECT DISTINCT ON (segment_id)
+            segment_id AS SegmentId,
+            avg_speed AS AvgSpeed,
+            congestion_index AS CongestionIndex,
+            recommended_speed AS RecommendedSpeed,
+            vehicle_count AS VehicleCount,
+            timestamp
+        FROM segment_metrics
+        ORDER BY segment_id, timestamp DESC
+    ";
+            var segments = (await conn.QueryAsync<SegmentDto>(segmentSql)).ToList();
 
             if (!segments.Any())
                 return Ok(new { });
 
-            var totalVehicles = segments.Sum(s => s.VehicleCount);
-            var avgSpeed = totalVehicles == 0
-            ? 0
-            : segments.Sum(s => s.AvgSpeed * s.VehicleCount) / totalVehicles;
+            // accurate count from backend-tracked HashSet, not segment sums
+            string countSql = "SELECT COALESCE(total_count, 0) FROM vehicle_stats WHERE id = 1";
+            var totalVehicles = await conn.ExecuteScalarAsync<int>(countSql);
+
+            // use segment totals only for weighted speed average, not for display
+            var segmentTotal = segments.Sum(s => s.VehicleCount);
+            var avgSpeed = segmentTotal == 0
+                ? 0
+                : segments.Sum(s => s.AvgSpeed * s.VehicleCount) / segmentTotal;
+
             var avgCongestion = segments.Average(s => s.CongestionIndex);
-
             var worst = segments.OrderByDescending(s => s.CongestionIndex).First();
-
-            // 🔥 street-level recommended speed
             var streetSpeed = segments.Min(s => s.RecommendedSpeed);
 
             return Ok(new
             {
                 totalVehicles,
-                avgSpeed,
-                avgCongestion,
+                avgSpeed = (int)Math.Round(avgSpeed),
+                avgCongestion = Math.Round(avgCongestion,2),
                 worstSegment = worst.SegmentId,
-                recommendedSpeed = streetSpeed
+                recommendedSpeed = (int)Math.Round(streetSpeed)
             });
         }
 

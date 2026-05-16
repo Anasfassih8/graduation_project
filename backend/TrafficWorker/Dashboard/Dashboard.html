@@ -6,26 +6,27 @@
 <title>Traffic Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
 body {
-  margin: 0;
   font-family: Arial, sans-serif;
   background: #0f172a;
   color: #e2e8f0;
+  height: 100vh;
   overflow: hidden;
 }
 
 .container {
-  padding: 15px;
+  padding: 14px;
   height: 100vh;
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-/* GRID LAYOUT */
 .top {
   display: grid;
-  grid-template-columns: 1fr 1fr 250px;
+  grid-template-columns: 1fr 1fr 260px;
   gap: 10px;
 }
 
@@ -34,9 +35,9 @@ body {
   grid-template-columns: 1fr 1fr 1fr;
   gap: 10px;
   flex: 1;
+  min-height: 0;
 }
 
-/* CARDS */
 .card {
   background: #1e293b;
   padding: 12px;
@@ -44,61 +45,153 @@ body {
   box-shadow: 0 0 10px rgba(0,0,0,0.3);
 }
 
-/* SUMMARY */
-.cards {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
+.card h3 {
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+  margin-bottom: 10px;
 }
 
-.metric {
-  font-size: 1.3em;
+/* SUMMARY GRID */
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.metric-card {
+  background: #0f172a;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.metric-label {
+  font-size: 0.7em;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+
+.metric-value {
+  font-size: 1.25em;
   font-weight: bold;
+  color: #f1f5f9;
 }
 
 /* SEGMENTS */
-.segments {
+.segments-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-  max-height: 250px;
+  gap: 8px;
+  max-height: 220px;
   overflow-y: auto;
+  padding-right: 2px;
 }
 
-.segment.low { border-left: 5px solid #22c55e; }
-.segment.medium { border-left: 5px solid #facc15; }
-.segment.high { border-left: 5px solid #ef4444; }
+.segments-grid::-webkit-scrollbar { width: 4px; }
+.segments-grid::-webkit-scrollbar-track { background: transparent; }
+.segments-grid::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
 
-/* CHARTS */
-canvas {
-  width: 100% !important;
-  height: 180px !important;
+.segment {
+  background: #0f172a;
+  border-radius: 8px;
+  padding: 8px;
+  border-left: 4px solid #334155;
+  font-size: 0.78em;
+}
+
+.segment p { color: #94a3b8; margin: 2px 0; }
+.segment p span { color: #e2e8f0; font-weight: bold; }
+.segment h4 { font-size: 0.85em; margin-bottom: 4px; color: #cbd5e1; }
+
+.segment.low  { border-left-color: #22c55e; }
+.segment.medium { border-left-color: #facc15; }
+.segment.high { border-left-color: #ef4444; }
+
+/* TRAFFIC LIGHT */
+.light-panel {
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
 .traffic-light {
-  width: 50px;
+  width: 44px;
   padding: 8px;
-  background: #111;
+  background: #0a0a0a;
   border-radius: 10px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  border: 1px solid #1e293b;
 }
 
 .light {
-  width: 25px;
-  height: 25px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
-  opacity: 0.2;
+  opacity: 0.15;
+  transition: opacity 0.3s, box-shadow 0.3s;
 }
 
-.red { background: #ef4444; }
+.red    { background: #ef4444; }
 .yellow { background: #facc15; }
-.green { background: #22c55e; }
+.green  { background: #22c55e; }
 
 .light.active {
   opacity: 1;
-  box-shadow: 0 0 8px rgba(255,255,255,0.6);
+  box-shadow: 0 0 12px currentColor;
+}
+
+.light-info { display: flex; flex-direction: column; gap: 6px; }
+
+.light-state {
+  font-size: 1.1em;
+  font-weight: bold;
+}
+
+.light-state.RED    { color: #ef4444; }
+.light-state.YELLOW { color: #facc15; }
+.light-state.GREEN  { color: #22c55e; }
+
+.light-detail {
+  font-size: 0.78em;
+  color: #64748b;
+}
+
+.light-detail span { color: #94a3b8; }
+
+/* CHART CONTAINER */
+.chart-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+canvas {
+  width: 100% !important;
+  height: 160px !important;
+}
+
+/* STATUS DOT */
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 </style>
 </head>
@@ -110,35 +203,36 @@ canvas {
 
     <!-- SUMMARY -->
     <div class="card">
-      <h3>Overview</h3>
-      <div id="summaryCards" class="cards"></div>
+      <div class="status-row">
+        <div class="status-dot"></div>
+        <h3 style="margin:0">Overview</h3>
+      </div>
+      <div id="summaryCards" class="summary-grid"></div>
     </div>
 
     <!-- SEGMENTS -->
     <div class="card">
-      <h3>Segments</h3>
-      <div id="segments" class="segments"></div>
+      <h3>Road Segments</h3>
+      <div id="segments" class="segments-grid"></div>
     </div>
 
+    <!-- TRAFFIC LIGHT -->
     <div class="card">
-      <h3>Traffic Light</h3>
-
-      <div style="display:flex; align-items:center; gap:15px;">
-
+      <h3>Traffic Signal</h3>
+      <div class="light-panel">
         <div class="traffic-light">
-          <div id="redLight" class="light red"></div>
+          <div id="redLight"    class="light red"></div>
           <div id="yellowLight" class="light yellow"></div>
-          <div id="greenLight" class="light green"></div>
+          <div id="greenLight"  class="light green"></div>
         </div>
-
-        <div>
-          <div id="lightState">STATE: --</div>
-          <div id="lightTimer">Time: --</div>
-          <div id="lightNext">Next: --</div>
+        <div class="light-info">
+          <div id="lightState" class="light-state">--</div>
+          <div class="light-detail">Timer: <span id="lightTimer">--</span></div>
+          <div class="light-detail">Next: <span id="lightNext">--</span></div>
+          <div class="light-detail">Rec. Speed: <span id="lightSpeed">--</span></div>
         </div>
-
+      </div>
     </div>
-</div>
 
   </div>
 
@@ -146,132 +240,256 @@ canvas {
   <div class="bottom">
 
     <div class="card">
-      <h3>Congestion</h3>
+      <h3>Congestion per segment</h3>
       <canvas id="barChart"></canvas>
     </div>
 
     <div class="card">
-      <h3>Speed Trend</h3>
+      <h3>Speed trend</h3>
       <canvas id="speedChart"></canvas>
     </div>
 
     <div class="card">
-      <h3>Congestion Trend</h3>
+      <h3>Congestion trend</h3>
       <canvas id="congestionChart"></canvas>
     </div>
 
   </div>
-
 </div>
 
 <script>
-// ================= MOCK DATA =================
-function getMockData() {
-  return Array.from({ length: 6 }, (_, i) => ({
-    segmentId: i,
-    vehicleCount: Math.floor(Math.random() * 50),
-    avgSpeed: Math.floor(Math.random() * 80),
-    density: Math.random() * 100,
-    congestionIndex: Math.random(),
-    recommendedSpeed: Math.floor(Math.random() * 60)
-  }));
-}
+const API = "http://localhost:5052/api/traffic";
 
-// ================= UTILITIES =================
+// ─── UTILITIES ──────────────────────────────────────────────
 function getCongestionLevel(index) {
   if (index < 0.4) return 'low';
   if (index < 0.7) return 'medium';
   return 'high';
 }
 
-// ================= SUMMARY =================
-function renderSummary(data,totalVehicles) {
-  const avgSpeed = (data.reduce((sum, s) => sum + s.avgSpeed, 0) / data.length).toFixed(1);
-  const avgCongestion = (data.reduce((sum, s) => sum + s.congestionIndex, 0) / data.length).toFixed(2);
+// ─── FETCH FUNCTIONS ────────────────────────────────────────
 
-  // NEW: overall recommended speed (street-level)
-  const overallRecommended = (data.reduce((sum, s) => sum + s.recommendedSpeed, 0) / data.length).toFixed(1);
+// Segments — for the segment cards and charts
+async function fetchSegments() {
+  const res = await fetch(`${API}/segments`);
+  const raw = await res.json();
+  if (!Array.isArray(raw) || raw.length === 0) return [];
 
-  const worst = data.reduce((max, s) => s.congestionIndex > max.congestionIndex ? s : max);
+  // Keep only latest row per segment (server uses DISTINCT ON but just in case)
+  const map = new Map();
+  raw.forEach(s => map.set(s.segmentId, s));
+  return Array.from(map.values());
+}
+
+// Summary — use the backend-calculated values, not client-side recalculation
+async function fetchSummary() {
+  const res = await fetch(`${API}/summary`);
+  return await res.json();
+}
+
+// Traffic light
+async function fetchLight() {
+  const res = await fetch(`${API}/light`);
+  return await res.json();
+}
+
+// ─── RENDER SUMMARY ─────────────────────────────────────────
+// Uses the /summary endpoint directly — backend does the math
+function renderSummary(summary) {
+  if (!summary) return;
 
   const cards = [
-    { label: 'Total Vehicles', value: totalVehicles },
-    { label: 'Average Speed', value: avgSpeed + ' km/h' },
-    { label: 'Avg Congestion', value: avgCongestion },
-    { label: 'Recommended Speed', value: overallRecommended + ' km/h' },
-    { label: 'Worst Segment', value: 'Segment ' + worst.segmentId }
+    { label: 'Total Vehicles',     value: summary.totalVehicles ?? '--' },
+    { label: 'Average Speed',      value: (summary.avgSpeed ?? '--') + ' km/h' },
+    { label: 'Avg Congestion',     value: summary.avgCongestion != null
+                                      ? (summary.avgCongestion * 100).toFixed(0) + '%'
+                                      : '--' },
+    { label: 'Recommended Speed',  value: (summary.recommendedSpeed ?? '--') + ' km/h' },
+    { label: 'Worst Segment',      value: summary.worstSegment != null
+                                      ? 'Segment ' + summary.worstSegment
+                                      : '--' },
   ];
 
-  const container = document.getElementById('summaryCards');
-  container.innerHTML = cards.map(c => `
-    <div class="card">
-      <div>${c.label}</div>
-      <div class="metric">${c.value}</div>
+  document.getElementById('summaryCards').innerHTML = cards.map(c => `
+    <div class="metric-card">
+      <div class="metric-label">${c.label}</div>
+      <div class="metric-value">${c.value}</div>
     </div>
   `).join('');
 }
 
-// ================= SEGMENTS =================
+// ─── RENDER SEGMENTS ────────────────────────────────────────
 function renderSegments(data) {
-  const container = document.getElementById('segments');
-  container.innerHTML = data.map(s => {
+  if (!data || data.length === 0) {
+    document.getElementById('segments').innerHTML =
+      '<p style="color:#64748b;font-size:0.8em">No segment data yet</p>';
+    return;
+  }
+
+  document.getElementById('segments').innerHTML = data.map(s => {
     const level = getCongestionLevel(s.congestionIndex);
     return `
-      <div class="card segment ${level}">
-        <h3>Segment ${s.segmentId}</h3>
-        <p>Vehicles: ${s.vehicleCount}</p>
-        <p>Speed: ${s.avgSpeed} km/h</p>
-        <p>Congestion: ${(s.congestionIndex * 100).toFixed(0)}%</p>
-        <p>Recommended: ${s.recommendedSpeed} km/h</p>
+      <div class="segment ${level}">
+        <h4>Segment ${s.segmentId}</h4>
+        <p>Vehicles: <span>${s.vehicleCount}</span></p>
+        <p>Speed: <span>${s.avgSpeed} km/h</span></p>
+        <p>Congestion: <span>${(s.congestionIndex * 100).toFixed(0)}%</span></p>
+        <p>Rec. Speed: <span>${s.recommendedSpeed} km/h</span></p>
       </div>
     `;
   }).join('');
 }
 
-// ================= CHARTS =================
+// ─── TRAFFIC LIGHT ──────────────────────────────────────────
+let countdownInterval = null;
+let lastLightState = null;  // only reset timer when STATE changes, not timestamp
+
+function renderTrafficLight(light) {
+  if (!light) return;
+
+  // Update light visuals
+  ['red','yellow','green'].forEach(c =>
+    document.getElementById(c + 'Light').classList.remove('active')
+  );
+
+  if (light.state === 'RED')    document.getElementById('redLight').classList.add('active');
+  if (light.state === 'YELLOW') document.getElementById('yellowLight').classList.add('active');
+  if (light.state === 'GREEN')  document.getElementById('greenLight').classList.add('active');
+
+  const stateEl = document.getElementById('lightState');
+  stateEl.textContent = light.state;
+  stateEl.className = 'light-state ' + light.state;
+
+  document.getElementById('lightNext').textContent  = light.nextState ?? '--';
+  document.getElementById('lightSpeed').textContent = (light.recommendedSpeed ?? '--') + ' km/h';
+
+  // Calculate remaining time from timestamp + duration
+  const start     = new Date(light.timeStamp + 'Z');
+  const elapsed   = Math.floor((Date.now() - start.getTime()) / 1000);
+  const remaining = Math.max(0, light.duration - elapsed);
+
+  // Only restart countdown when the state actually changes
+  if (lastLightState !== light.state) {
+    lastLightState = light.state;
+
+    if (countdownInterval) clearInterval(countdownInterval);
+
+    let timer = remaining;
+    document.getElementById('lightTimer').textContent = timer + ' s';
+
+    countdownInterval = setInterval(() => {
+      timer = Math.max(0, timer - 1);
+      document.getElementById('lightTimer').textContent = timer + ' s';
+    }, 1000);
+  }
+}
+
+// ─── CHARTS ─────────────────────────────────────────────────
+const chartDefaults = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: { labels: { color: '#94a3b8', font: { size: 11 } } }
+  },
+  scales: {
+    x: {
+      ticks: { color: '#64748b', font: { size: 10 } },
+      grid:  { color: 'rgba(255,255,255,0.05)' }
+    },
+    y: {
+      ticks: { color: '#64748b', font: { size: 10 } },
+      grid:  { color: 'rgba(255,255,255,0.05)' }
+    }
+  }
+};
+
 let barChart, speedChart, congestionChart;
 
 function initCharts() {
   barChart = new Chart(document.getElementById('barChart'), {
     type: 'bar',
-    data: { labels: [], datasets: [{ label: 'Congestion', data: [] }] },
+    data: {
+      labels: [],
+      datasets: [{
+        label: 'Congestion index',
+        data: [],
+        backgroundColor: ctx => {
+          const v = ctx.raw;
+          if (v >= 0.7) return 'rgba(239,68,68,0.7)';
+          if (v >= 0.4) return 'rgba(250,204,21,0.7)';
+          return 'rgba(34,197,94,0.7)';
+        },
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      ...chartDefaults,
+      scales: {
+        ...chartDefaults.scales,
+        y: { ...chartDefaults.scales.y, min: 0, max: 1 }
+      }
+    }
   });
 
   speedChart = new Chart(document.getElementById('speedChart'), {
     type: 'line',
-    data: { labels: [], datasets: [{ label: 'Avg Speed', data: [] }] },
+    data: {
+      labels: [],
+      datasets: [{
+        label: 'Avg speed (km/h)',
+        data: [],
+        borderColor: '#38bdf8',
+        backgroundColor: 'rgba(56,189,248,0.1)',
+        tension: 0.3,
+        fill: true,
+        pointRadius: 3,
+      }]
+    },
+    options: chartDefaults
   });
 
   congestionChart = new Chart(document.getElementById('congestionChart'), {
     type: 'line',
-    data: { labels: [], datasets: [{ label: 'Congestion Over Time', data: [] }] },
+    data: {
+      labels: [],
+      datasets: [{
+        label: 'Avg congestion',
+        data: [],
+        borderColor: '#f97316',
+        backgroundColor: 'rgba(249,115,22,0.1)',
+        tension: 0.3,
+        fill: true,
+        pointRadius: 3,
+      }]
+    },
+    options: {
+      ...chartDefaults,
+      scales: {
+        ...chartDefaults.scales,
+        y: { ...chartDefaults.scales.y, min: 0, max: 1 }
+      }
+    }
   });
 }
 
-const history = {
-  time: [],
-  speed: [],
-  congestion: []
-};
+const history = { time: [], speed: [], congestion: [] };
 
-function updateCharts(data) {
-  const labels = data.map(s => 'Seg ' + s.segmentId);
-  const congestion = data.map(s => s.congestionIndex);
+function updateCharts(segments, summary) {
+  if (!segments || segments.length === 0) return;
 
-  barChart.data.labels = labels;
-  barChart.data.datasets[0].data = congestion;
+  // Bar chart uses per-segment data
+  barChart.data.labels   = segments.map(s => 'Seg ' + s.segmentId);
+  barChart.data.datasets[0].data = segments.map(s => s.congestionIndex);
   barChart.update();
 
-  const avgSpeed = data.reduce((sum, s) => sum + s.avgSpeed, 0) / data.length;
-  const avgCong = data.reduce((sum, s) => sum + s.congestionIndex, 0) / data.length;
-
+  // Trend charts use summary values (already computed server-side)
   const timeLabel = new Date().toLocaleTimeString();
-
   history.time.push(timeLabel);
-  history.speed.push(avgSpeed);
-  history.congestion.push(avgCong);
+  history.speed.push(summary?.avgSpeed ?? 0);
+  history.congestion.push(summary?.avgCongestion ?? 0);
 
-  if (history.time.length > 10) {
+  // Keep last 12 data points
+  if (history.time.length > 12) {
     history.time.shift();
     history.speed.shift();
     history.congestion.shift();
@@ -286,118 +504,21 @@ function updateCharts(data) {
   congestionChart.update();
 }
 
-// ================= DATA FETCH =================
-
-async function fetchData() {
-  const res = await fetch("http://localhost:5052/api/traffic/segments");
-  const raw = await res.json();
-
-  const map = new Map();
-
-  raw.forEach(s => {
-    map.set(s.segmentId, s); // keeps latest
-  });
-
-
-  
-  return Array.from(map.values()).map(s => ({
-    segmentId: s.segmentId,
-    vehicleCount: s.vehicleCount || 0,
-    avgSpeed: s.avgSpeed,
-    density: s.density,
-    congestionIndex: s.congestionIndex,
-    recommendedSpeed: s.recommendedSpeed
-  }));
-}
-async function fetchVehicleCount() {
-  const res = await fetch("http://localhost:5052/api/traffic/vehicle-count");
-  const data = await res.json();
-  return data.totalCount;
-}
-
-let currentTimer = 0;
-let countdownInterval = null;
-
-async function fetchLight() {
-  const res = await fetch("http://localhost:5052/api/traffic/light");
-  return await res.json();
-}
-
-function renderTrafficLight(light) {
-  if (!light) return;
-
-  const red = document.getElementById("redLight");
-  const yellow = document.getElementById("yellowLight");
-  const green = document.getElementById("greenLight");
-
-  red.classList.remove("active");
-  yellow.classList.remove("active");
-  green.classList.remove("active");
-
-  if (light.state === "RED") red.classList.add("active");
-  if (light.state === "YELLOW") yellow.classList.add("active");
-  if (light.state === "GREEN") green.classList.add("active");
-
-  document.getElementById("lightState").innerText = "STATE: " + light.state;
-  document.getElementById("lightNext").innerText = "Next: " + light.nextState;
-
-  const now = new Date();
-  const start = new Date(light.timeStamp + "Z");
-  const elapsed = Math.floor((now - start) / 1000);
-
-  const remaining = Math.max(0, light.duration - elapsed);
-  currentTimer = remaining;
-
-  console.log("NOW:", now);
-  console.log("START:", start);
-  console.log("ELAPSED:", elapsed);
-  console.log("REMAINING:", remaining);
-  console.log("RAW TIMESTAMP:", light.timeStamp);
-
-  document.getElementById("lightTimer").innerText =
-  "Time: " + remaining + " s";
-  
-  if (
-    window.lastState !== light.state ||
-    window.lastTimestamp !== light.timeStamp
-  ) {
-    window.lastState = light.state;
-    window.lastTimestamp = light.timeStamp;
-    
-    if (countdownInterval) clearInterval(countdownInterval);
-    
-    currentTimer = remaining;
-    
-    countdownInterval = setInterval(() => {
-      if (currentTimer <= 0) {
-        document.getElementById("lightTimer").innerText = "Time: 0 s";
-        return;
-      }
-
-      document.getElementById("lightTimer").innerText =
-        "Time: " + currentTimer + " s";
-
-      currentTimer--;
-    }, 1000);
-
-  
-}
-}
-
-
-// ================= MAIN =================
+// ─── MAIN LOOP ───────────────────────────────────────────────
 async function updateDashboard() {
   try {
-    const data = await fetchData();
-    const totalVehicles = await fetchVehicleCount();
-    const light = await fetchLight();
+    const [segments, summary, light] = await Promise.all([
+      fetchSegments(),
+      fetchSummary(),
+      fetchLight()
+    ]);
 
-    renderSummary(data, totalVehicles);
-    renderSegments(data);
-    updateCharts(data);
+    renderSummary(summary);
+    renderSegments(segments);
+    updateCharts(segments, summary);
     renderTrafficLight(light);
   } catch (err) {
-    console.error("Dashboard error:", err);
+    console.error('Dashboard error:', err);
   }
 }
 

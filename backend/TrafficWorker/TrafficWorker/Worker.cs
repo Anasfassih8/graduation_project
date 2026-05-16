@@ -7,6 +7,7 @@ using RabbitMQ.Client.Events;
 using Npgsql;
 using Dapper;
 using TrafficWorker.services;
+using TrafficWorker.models;
 
 public class Worker : BackgroundService
 {
@@ -20,6 +21,7 @@ public class Worker : BackgroundService
     private Timer _timer;
 
     private HashSet<int> seenVehicles = new(); //tracks unique Vehicle IDs
+    Dictionary<int, VehicleState> activeVehicles=new(); //tracks latest state of each vehicle for segment metrics
     private int totalCount = 0; //total count of unique vehicles
 
     private readonly string _connectionString =
@@ -49,14 +51,16 @@ public class Worker : BackgroundService
     {
         _timer = new Timer(async _ =>
         {
+
             var metrics = _trafficService.Calculate();
+
+            if(!metrics.Any()) return;//no real data yet so skip
 
             using var conn = new NpgsqlConnection(_connectionString);
             await conn.OpenAsync();
 
             foreach (var m in metrics)
             {
-                Console.WriteLine($"Segment {m.SegmentId} CI: {m.CongestionIndex}");
                 _logger.LogInformation(
                     $"Segment {m.SegmentId} | CI: {m.CongestionIndex:F2} | RecSpeed: {m.RecommendedSpeed:F1}");
 
@@ -83,10 +87,19 @@ public class Worker : BackgroundService
                 );
 
                 string lightSql = @"
-                        INSERT INTO traffic_light (state, next_state, duration, recommended_speed)
-                        VALUES (@State, @NextState, @Duration, @RecommendedSpeed)
-                        ";
-
+                                    INSERT INTO traffic_light (id, state, next_state, duration, recommended_speed, timestamp)
+                                    VALUES (1, @State, @NextState, @Duration, @RecommendedSpeed, NOW())
+                                    ON CONFLICT (id) DO UPDATE SET
+                                    state            = EXCLUDED.state,
+                                    next_state       = EXCLUDED.next_state,
+                                    duration         = EXCLUDED.duration,
+                                    recommended_speed = EXCLUDED.recommended_speed,
+                                    timestamp        = CASE
+                                                       WHEN traffic_light.state != EXCLUDED.state
+                                                       THEN NOW()
+                                                       ELSE traffic_light.timestamp
+                                                       END
+                                                           ";
                 await conn.ExecuteAsync(lightSql, light);
             }
 
@@ -96,6 +109,7 @@ public class Worker : BackgroundService
         consumer.Received += async (model, ea) =>
         {
             using var conn = new NpgsqlConnection(_connectionString);
+            await conn.OpenAsync();
             //convert from byte => string
             var body = ea.Body.ToArray();
             var json = Encoding.UTF8.GetString(body);
@@ -117,12 +131,12 @@ public class Worker : BackgroundService
 
                     _logger.LogInformation($"New Vehicle Count: {totalCount}");
 
-                    // INSERT TOTAL COUNT INTO DB
-                    await conn.OpenAsync();
-
                     string statsSql = @"
-                                        INSERT INTO vehicle_stats (total_count)
-                                        VALUES (@TotalCount)
+                                        INSERT INTO vehicle_stats (id, total_count)
+                                        VALUES (1, @TotalCount)
+                                        ON CONFLICT (id) DO UPDATE 
+                                        SET total_count = EXCLUDED.total_count
+                                                          
                                     ";
 
                     await conn.ExecuteAsync(statsSql, new { TotalCount = totalCount });
@@ -130,7 +144,6 @@ public class Worker : BackgroundService
 
                 //  INSERT INTO POSTGRES
                
-                await conn.OpenAsync();
 
                 string sql = @"
                     INSERT INTO vehicle_events (vehicle_id, speed_kmh, pos_x, pos_y, timestamp)
@@ -183,6 +196,7 @@ public class VehicleEvent
 
     public Position position { get; set; }
     public DateTime timestamp { get; set; }
+    public int CarsInRoi { get; set; }
 }
 
 public class Position

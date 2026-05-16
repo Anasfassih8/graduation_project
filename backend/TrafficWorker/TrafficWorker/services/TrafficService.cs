@@ -9,89 +9,91 @@ namespace TrafficWorker.services
 {
     public class TrafficService
     {
-        private const double RoadLength = 1000.0;
-        private const double SegmentLength = 1.0;
-        private const double MaxDensity = 200.0;
+        private const double SegmentLength = 10.0;
+        private const double MaxDensity = 0.3;
         private const double MinX = 0.0;
+        private const double MinValidSpeed = 2.0; // below this = tracking artifact
 
-        private readonly Dictionary<int, List<VehicleEvent>> _segments = new();
+        private readonly Dictionary<int, Dictionary<int, VehicleEvent>> _segments = new();
         private readonly TrafficPolicyService _policy = new();
         private readonly object _lock = new();
 
+        private int GetSegmentIndex(double position) => (int)(position / SegmentLength);
 
-        private int GetSegmentIndex(double position) => (int)((position - MinX) / SegmentLength);
         public void AddVehicle(VehicleEvent v)
         {
-            Console.WriteLine($"Adding vehicle {v.vehicle_id} at X={v.position.x}");
             lock (_lock)
             {
-                int segmentId = GetSegmentIndex(v.position.x);
-                Console.WriteLine($"Assigned to segment {segmentId}");
-
+                int segmentId = GetSegmentIndex(v.position.y);
                 if (!_segments.ContainsKey(segmentId))
-                    _segments[segmentId] = new List<VehicleEvent>();
-
-                _segments[segmentId].Add(v);
-                Console.WriteLine($"Segment {segmentId} now has {_segments[segmentId].Count} vehicles");
+                    _segments[segmentId] = new Dictionary<int, VehicleEvent>();
+                _segments[segmentId][v.vehicle_id] = v;
             }
         }
 
         public List<SegmentMetrics> Calculate()
         {
-            Console.WriteLine($"Total segments: {_segments.Count}");
             lock (_lock)
             {
                 var now = DateTime.Now;
                 var dayType = _policy.GetDayType(now);
                 var period = _policy.GetTrafficPeriod(now);
-
-                // For now assume one road type
-                var roadType = RoadType.MainRoad;
-
-                var baseSpeed = _policy.GetBaseSpeed(roadType);
+                var baseSpeed = _policy.GetBaseSpeed(RoadType.MainRoad);
                 var adjustedSpeed = _policy.AdjustSpeed(baseSpeed, dayType, period);
-
-                var window = TimeSpan.FromSeconds(10);
 
                 var results = new List<SegmentMetrics>();
 
                 foreach (var segment in _segments)
                 {
-                    Console.WriteLine($"Processing segment {segment.Key} with {segment.Value.Count} vehicles");
-                    int segmentId = segment.Key;
-
-                    var vehicles = segment.Value;
-
-
+                    var vehicles = segment.Value.Values.ToList();
                     if (vehicles.Count == 0) continue;
 
                     int count = vehicles.Count;
-                    double avgSpeed = Math.Min(
-                                                vehicles.Average(v => v.speed_kmh),
-                                                adjustedSpeed
-                                            );
 
-                    double density = count / SegmentLength;
+                    // exclude tracking artifacts from speed calculation
+                    var movingVehicles = vehicles
+                        .Where(v => v.speed_kmh >= MinValidSpeed)
+                        .ToList();
 
-                    double densityNorm = Math.Min(density / MaxDensity, 1);
-                    double speedNorm = (adjustedSpeed - avgSpeed) / adjustedSpeed;
+                    double avgSpeed;
+                    if (movingVehicles.Count == 0)
+                        avgSpeed = 0; // all vehicles appear stopped
+                    else
+                        avgSpeed = Math.Min(
+                            movingVehicles.Average(v => v.speed_kmh),
+                            adjustedSpeed
+                        );
+
+                    double density = (double)count / SegmentLength;
+                    double densityNorm = Math.Min(density / MaxDensity, 1.0);
+
+                    double speedNorm = adjustedSpeed > 0
+                        ? Math.Clamp((adjustedSpeed - avgSpeed) / adjustedSpeed, 0, 1)
+                        : 0;
 
                     double ci = (0.6 * densityNorm) + (0.4 * speedNorm);
                     ci = Math.Clamp(ci, 0, 1);
+
+                    // single vehicle = low confidence, halve its CI impact
+                    if (count == 1)
+                        ci *= 0.5;
 
                     double recommendedSpeed = adjustedSpeed * (1 - ci * 0.7);
 
                     results.Add(new SegmentMetrics
                     {
-                        SegmentId = segmentId,
+                        SegmentId = segment.Key,
                         VehicleCount = count,
-                        AvgSpeed = avgSpeed,
-                        Density = density,
-                        CongestionIndex = ci,
-                        RecommendedSpeed = recommendedSpeed
+                        AvgSpeed = (int)Math.Round(avgSpeed),
+                        Density = Math.Round(density, 2),
+                        CongestionIndex = Math.Round(ci, 2),
+                        RecommendedSpeed = (int)Math.Round(recommendedSpeed)
                     });
                 }
-                _segments.Clear();
+
+                if (results.Any())
+                    _segments.Clear();
+
                 return results;
             }
         }
@@ -99,20 +101,30 @@ namespace TrafficWorker.services
         public double GetStreetRecommendedSpeed(List<SegmentMetrics> segments)
         {
             var now = DateTime.Now;
+            var adjustedSpeed = _policy.AdjustSpeed(
+                _policy.GetBaseSpeed(RoadType.MainRoad),
+                _policy.GetDayType(now),
+                _policy.GetTrafficPeriod(now)
+            );
 
-            var dayType = _policy.GetDayType(now);
-            var period = _policy.GetTrafficPeriod(now);
+            if (!segments.Any()) return (int)Math.Round(adjustedSpeed);
 
-            var roadType = RoadType.MainRoad;
+            // only consider segments with 2+ vehicles for the street decision
+            var reliable = segments.Where(s => s.VehicleCount >= 2).ToList();
+            var source = reliable.Any() ? reliable : segments;
 
-            var baseSpeed = _policy.GetBaseSpeed(roadType);
-            var adjustedSpeed = _policy.AdjustSpeed(baseSpeed, dayType, period);
+            // take the worst segment but weighted by how many cars are in it
+            double streetSpeed = source
+                .Select(s => new {
+                    s.RecommendedSpeed,
+                    Weight = s.VehicleCount
+                })
+                .OrderBy(s => s.RecommendedSpeed)
+                .ThenByDescending(s => s.Weight)
+                .First()
+                .RecommendedSpeed;
 
-            // If no data → return intelligent default (NOT static)
-            if (!segments.Any()) return adjustedSpeed;
-
-            // safest value = worst segment
-            return segments.Min(s => s.RecommendedSpeed);
+            return (int)Math.Round(streetSpeed);
         }
     }
-}
+ }

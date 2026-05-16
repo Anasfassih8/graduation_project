@@ -12,5 +12,6 @@ namespace TrafficWorker.models
         public Position Position { get; set; } // meters
         public double Speed { get; set; }    // km/h
         public DateTime Timestamp { get; set; }
+        public int CarInRoi { get; set; }
     }
 }
