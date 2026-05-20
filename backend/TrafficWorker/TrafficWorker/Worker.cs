@@ -21,7 +21,7 @@ public class Worker : BackgroundService
     private Timer _timer;
 
     private HashSet<int> seenVehicles = new(); //tracks unique Vehicle IDs
-    Dictionary<int, VehicleState> activeVehicles=new(); //tracks latest state of each vehicle for segment metrics
+    Dictionary<int, VehicleState> activeVehicles = new(); //tracks latest state of each vehicle for segment metrics
     private int totalCount = 0; //total count of unique vehicles
 
     private readonly string _connectionString =
@@ -54,7 +54,7 @@ public class Worker : BackgroundService
 
             var metrics = _trafficService.Calculate();
 
-            if(!metrics.Any()) return;//no real data yet so skip
+            if (!metrics.Any()) return;//no real data yet so skip
 
             using var conn = new NpgsqlConnection(_connectionString);
             await conn.OpenAsync();
@@ -66,8 +66,8 @@ public class Worker : BackgroundService
 
                 string sql = @"
             INSERT INTO segment_metrics 
-            (segment_id, avg_speed, density, congestion_index, recommended_speed, vehicle_count)
-            VALUES (@SegmentId, @AvgSpeed, @Density, @CongestionIndex, @RecommendedSpeed, @VehicleCount)
+            (segment_id, avg_speed, density, congestion_index, recommended_speed, vehicle_count, is_incident)
+            VALUES (@SegmentId, @AvgSpeed, @Density, @CongestionIndex, @RecommendedSpeed, @VehicleCount, @IsIncident)
         ";
 
                 await conn.ExecuteAsync(sql, m);
@@ -143,7 +143,7 @@ public class Worker : BackgroundService
                 }
 
                 //  INSERT INTO POSTGRES
-               
+
 
                 string sql = @"
                     INSERT INTO vehicle_events (vehicle_id, speed_kmh, pos_x, pos_y, timestamp)

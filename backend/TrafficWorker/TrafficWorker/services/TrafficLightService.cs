@@ -23,83 +23,108 @@ namespace TrafficWorker.services
         private DateTime _stateEndTime = DateTime.MinValue;
         private TrafficLightResult _currentResult = null;
         private string _currentState = "GREEN";
-        private int _consecutiveOppositeReadings = 0;  // add this
+        private string _targetState = null; // decided in the look-ahead window
 
+        private const int DecisionWindowSeconds = 10; // check road this many seconds before end
+        private const double SpeedThreshold = 35.0;
         private const double FreeFlowSpeed = 60.0;
-        private const int MinGreen = 20, MaxGreen = 60;
-        private const int MinRed = 15, MaxRed = 50;
+        private const int MinGreen = 30, MaxGreen = 60;
+        private const int MinRed = 20, MaxRed = 50;
         private const int YellowDuration = 5;
-        private const int RequiredReadings = 2; // consecutive ticks needed to change mid-cycle
 
         public TrafficLightResult Calculate(double streetRecommendedSpeed)
         {
             var now = DateTime.Now;
-            string wouldBe = streetRecommendedSpeed >= 35 ? "GREEN" : "RED";
+            double secondsRemaining = _stateEndTime == DateTime.MinValue
+                ? 0
+                : (_stateEndTime - now).TotalSeconds;
 
-            if (_currentResult != null && now < _stateEndTime)
+            // ── ACTIVE STATE ──────────────────────────────────────────────
+            if (secondsRemaining > 0 && _currentResult != null)
             {
+                // YELLOW is locked completely — no logic runs during transition
                 if (_currentState == "YELLOW")
                 {
-                    // during YELLOW, ignore opposite readings until duration ends
-                    _currentResult.IsNewCycle = false;
-                    return _currentResult;
-                }
-                if (wouldBe == _currentState)
-                {
-                    // state agrees — reset the opposite counter
-                    _consecutiveOppositeReadings = 0;
                     _currentResult.IsNewCycle = false;
                     return _currentResult;
                 }
 
-                // state disagrees — require 2 consecutive readings before acting
-                _consecutiveOppositeReadings++;
-                if (_consecutiveOppositeReadings < RequiredReadings)
+                // Look-ahead window: decide next state once
+                if (secondsRemaining <= DecisionWindowSeconds && _targetState == null)
                 {
-                    _currentResult.IsNewCycle = false;
-                    return _currentResult; // not convinced yet, hold current state
+                    _targetState = streetRecommendedSpeed >= SpeedThreshold ? "GREEN" : "RED";
+
+                    // Update the result so dashboard sees the upcoming NextState
+                    _currentResult.NextState = _targetState;
+                    _currentResult.IsNewCycle = true; // write this update to DB
+                    return _currentResult;
                 }
 
-                _consecutiveOppositeReadings = 0;
-                // fall through — two consecutive opposite readings confirmed
+                // Outside decision window — fully locked, return cached state
+                _currentResult.IsNewCycle = false;
+                return _currentResult;
             }
 
-            double normalized = Math.Clamp(streetRecommendedSpeed / FreeFlowSpeed, 0, 1);
+            // ── STATE ENDED ───────────────────────────────────────────────
 
-            // YELLOW transition
-            if (_currentResult != null && wouldBe != _currentState)
+            // Coming out of YELLOW → go to the target we decided earlier
+            if (_currentState == "YELLOW")
             {
-                var yellow = new TrafficLightResult
-                {
-                    State = "YELLOW",
-                    NextState = wouldBe,
-                    Duration = YellowDuration,
-                    RecommendedSpeed = (int)Math.Round(streetRecommendedSpeed),
-                    IsNewCycle = true
-                };
-                _currentState = wouldBe;
-                _stateEndTime = now.AddSeconds(YellowDuration);
-                _currentResult = yellow;
-                return yellow;
+                string dest = _targetState ?? "GREEN";
+                _targetState = null;
+                return CreateMainState(dest, streetRecommendedSpeed, now);
             }
 
-            int greenTime = (int)(MinGreen + (normalized * (MaxGreen - MinGreen)));
-            int redTime = (int)(MinRed + ((1 - normalized) * (MaxRed - MinRed)));
-            int duration = wouldBe == "GREEN" ? greenTime : redTime;
+            // Coming out of GREEN or RED
+            string nextState = _targetState ?? (streetRecommendedSpeed >= SpeedThreshold ? "GREEN" : "RED");
+            _targetState = null;
 
-            var result = new TrafficLightResult
+            // State changes → go through YELLOW
+            if (nextState != _currentState)
+                return CreateYellowState(nextState, streetRecommendedSpeed, now);
+
+            // Same state → just renew the cycle
+            return CreateMainState(nextState, streetRecommendedSpeed, now);
+        }
+
+        private TrafficLightResult CreateYellowState(string nextState, double speed, DateTime now)
+        {
+            _currentState = "YELLOW";
+            _targetState = nextState;
+            _stateEndTime = now.AddSeconds(YellowDuration);
+
+            _currentResult = new TrafficLightResult
             {
-                State = wouldBe,
-                NextState = wouldBe,
-                Duration = duration,
-                RecommendedSpeed = (int)Math.Round(streetRecommendedSpeed),
+                State = "YELLOW",
+                NextState = nextState,
+                Duration = YellowDuration,
+                RecommendedSpeed = (int)Math.Round(speed),
                 IsNewCycle = true
             };
-            _currentState = wouldBe;
+            return _currentResult;
+        }
+
+        private TrafficLightResult CreateMainState(string state, double speed, DateTime now)
+        {
+            double normalized = Math.Clamp(speed / FreeFlowSpeed, 0, 1);
+            int duration = state == "GREEN"
+                ? (int)(MinGreen + normalized * (MaxGreen - MinGreen))
+                : (int)(MinRed + (1 - normalized) * (MaxRed - MinRed));
+
+            _currentState = state;
             _stateEndTime = now.AddSeconds(duration);
-            _currentResult = result;
-            return result;
+
+            _currentResult = new TrafficLightResult
+            {
+                State = state,
+                NextState = "?",  // unknown until decision window
+                Duration = duration,
+                RecommendedSpeed = (int)Math.Round(speed),
+                IsNewCycle = true
+            };
+            return _currentResult;
         }
     }
 }
+
 

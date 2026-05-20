@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Traffic Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -53,7 +54,7 @@ body {
   margin-bottom: 10px;
 }
 
-/* SUMMARY GRID */
+/* SUMMARY */
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -64,19 +65,11 @@ body {
   background: #0f172a;
   border-radius: 8px;
   padding: 10px;
+  transition: background 0.3s;
 }
 
-.metric-label {
-  font-size: 0.7em;
-  color: #64748b;
-  margin-bottom: 4px;
-}
-
-.metric-value {
-  font-size: 1.25em;
-  font-weight: bold;
-  color: #f1f5f9;
-}
+.metric-label { font-size: 0.7em; color: #64748b; margin-bottom: 4px; }
+.metric-value { font-size: 1.25em; font-weight: bold; color: #f1f5f9; }
 
 /* SEGMENTS */
 .segments-grid {
@@ -98,37 +91,66 @@ body {
   padding: 8px;
   border-left: 4px solid #334155;
   font-size: 0.78em;
+  position: relative;
+  transition: border-color 0.4s;
 }
 
 .segment p { color: #94a3b8; margin: 2px 0; }
 .segment p span { color: #e2e8f0; font-weight: bold; }
-.segment h4 { font-size: 0.85em; margin-bottom: 4px; color: #cbd5e1; }
+.segment h4 { font-size: 0.85em; margin-bottom: 4px; color: #cbd5e1; display: flex; justify-content: space-between; align-items: center; }
 
-.segment.low  { border-left-color: #22c55e; }
+.segment.low    { border-left-color: #22c55e; }
 .segment.medium { border-left-color: #facc15; }
-.segment.high { border-left-color: #ef4444; }
+.segment.high   { border-left-color: #ef4444; }
 
-/* TRAFFIC LIGHT */
-.light-panel {
-  display: flex;
-  align-items: center;
-  gap: 16px;
+/* worst segment badge */
+.worst-badge {
+  font-size: 0.65em;
+  background: #ef4444;
+  color: white;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-weight: bold;
 }
 
+/* congestion progress bar */
+.congestion-bar-wrap {
+  background: #1e293b;
+  border-radius: 3px;
+  height: 4px;
+  margin-top: 5px;
+  overflow: hidden;
+}
+
+.congestion-bar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.6s ease, background-color 0.4s;
+}
+
+/* alert pulse for high congestion */
+@keyframes alertPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+  50%       { box-shadow: 0 0 0 6px rgba(239,68,68,0.25); }
+}
+
+.segment.critical {
+  animation: alertPulse 1.5s infinite;
+}
+
+/* TRAFFIC LIGHT */
+.light-panel { display: flex; align-items: center; gap: 16px; }
+
 .traffic-light {
-  width: 44px;
-  padding: 8px;
+  width: 44px; padding: 8px;
   background: #0a0a0a;
   border-radius: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: flex; flex-direction: column; gap: 8px;
   border: 1px solid #1e293b;
 }
 
 .light {
-  width: 26px;
-  height: 26px;
+  width: 26px; height: 26px;
   border-radius: 50%;
   opacity: 0.15;
   transition: opacity 0.3s, box-shadow 0.3s;
@@ -138,81 +160,67 @@ body {
 .yellow { background: #facc15; }
 .green  { background: #22c55e; }
 
-.light.active {
-  opacity: 1;
-  box-shadow: 0 0 12px currentColor;
-}
+.light.active { opacity: 1; box-shadow: 0 0 12px currentColor; }
 
 .light-info { display: flex; flex-direction: column; gap: 6px; }
 
-.light-state {
-  font-size: 1.1em;
-  font-weight: bold;
-}
-
+.light-state { font-size: 1.1em; font-weight: bold; }
 .light-state.RED    { color: #ef4444; }
 .light-state.YELLOW { color: #facc15; }
 .light-state.GREEN  { color: #22c55e; }
 
-.light-detail {
-  font-size: 0.78em;
-  color: #64748b;
-}
-
+.light-detail { font-size: 0.78em; color: #64748b; }
 .light-detail span { color: #94a3b8; }
 
-/* CHART CONTAINER */
-.chart-wrap {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-}
+canvas { width: 100% !important; height: 160px !important; }
 
-canvas {
-  width: 100% !important;
-  height: 160px !important;
-}
-
-/* STATUS DOT */
-.status-row {
+/* STATUS ROW */
+.header-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: space-between;
   margin-bottom: 8px;
 }
 
+.status-row { display: flex; align-items: center; gap: 6px; }
+
 .status-dot {
-  width: 8px;
-  height: 8px;
+  width: 8px; height: 8px;
   border-radius: 50%;
   background: #22c55e;
   animation: pulse 2s infinite;
 }
 
+.status-dot.disconnected { background: #ef4444; animation: none; }
+
+.last-updated { font-size: 0.68em; color: #475569; }
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  50%       { opacity: 0.4; }
 }
 </style>
 </head>
 <body>
 <div class="container">
 
-  <!-- TOP SECTION -->
   <div class="top">
 
     <!-- SUMMARY -->
     <div class="card">
-      <div class="status-row">
-        <div class="status-dot"></div>
-        <h3 style="margin:0">Overview</h3>
+      <div class="header-row">
+        <div class="status-row">
+          <div id="statusDot" class="status-dot"></div>
+          <h3 style="margin:0">Overview</h3>
+        </div>
+        <span id="lastUpdated" class="last-updated">--</span>
       </div>
       <div id="summaryCards" class="summary-grid"></div>
     </div>
 
     <!-- SEGMENTS -->
     <div class="card">
-      <h3>Road Segments</h3>
+      <h3>Road Segments <span style="color:#475569;font-weight:normal;font-size:0.85em">(sorted by congestion)</span></h3>
       <div id="segments" class="segments-grid"></div>
     </div>
 
@@ -236,78 +244,76 @@ canvas {
 
   </div>
 
-  <!-- BOTTOM SECTION (CHARTS) -->
   <div class="bottom">
-
-    <div class="card">
-      <h3>Congestion per segment</h3>
-      <canvas id="barChart"></canvas>
-    </div>
-
-    <div class="card">
-      <h3>Speed trend</h3>
-      <canvas id="speedChart"></canvas>
-    </div>
-
-    <div class="card">
-      <h3>Congestion trend</h3>
-      <canvas id="congestionChart"></canvas>
-    </div>
-
+    <div class="card"><h3>Congestion per segment</h3><canvas id="barChart"></canvas></div>
+    <div class="card"><h3>Speed trend</h3><canvas id="speedChart"></canvas></div>
+    <div class="card"><h3>Congestion trend</h3><canvas id="congestionChart"></canvas></div>
   </div>
+
 </div>
 
 <script>
 const API = "http://localhost:5052/api/traffic";
 
-// ─── UTILITIES ──────────────────────────────────────────────
-function getCongestionLevel(index) {
-  if (index < 0.4) return 'low';
-  if (index < 0.7) return 'medium';
+let latestSegments = [];
+let latestSummary  = null;
+
+// ─── UTILITIES ────────────────────────────────────────────────
+function getCongestionLevel(ci) {
+  if (ci < 0.4) return 'low';
+  if (ci < 0.7) return 'medium';
   return 'high';
 }
 
-// ─── FETCH FUNCTIONS ────────────────────────────────────────
+function getCongestionBarColor(ci) {
+  if (ci >= 0.7) return '#ef4444';
+  if (ci >= 0.4) return '#facc15';
+  return '#22c55e';
+}
 
-// Segments — for the segment cards and charts
+// always compute worst from live segment data — avoids stale summary mismatch
+function getWorstSegmentId(segments) {
+  if (!segments || segments.length === 0) return null;
+  return segments.reduce((max, s) =>
+    s.congestionIndex > max.congestionIndex ? s : max
+  ).segmentId;
+}
+
+// ─── FETCH ────────────────────────────────────────────────────
 async function fetchSegments() {
   const res = await fetch(`${API}/segments`);
   const raw = await res.json();
   if (!Array.isArray(raw) || raw.length === 0) return [];
-
-  // Keep only latest row per segment (server uses DISTINCT ON but just in case)
   const map = new Map();
   raw.forEach(s => map.set(s.segmentId, s));
   return Array.from(map.values());
 }
 
-// Summary — use the backend-calculated values, not client-side recalculation
 async function fetchSummary() {
   const res = await fetch(`${API}/summary`);
   return await res.json();
 }
 
-// Traffic light
 async function fetchLight() {
   const res = await fetch(`${API}/light`);
   return await res.json();
 }
 
-// ─── RENDER SUMMARY ─────────────────────────────────────────
-// Uses the /summary endpoint directly — backend does the math
-function renderSummary(summary) {
+// ─── RENDER SUMMARY ───────────────────────────────────────────
+function renderSummary(summary, segments) {
   if (!summary) return;
 
+  // always derive worst from live segment data
+  const worstId = getWorstSegmentId(segments || latestSegments)
+    ?? summary.worstSegment;
+
   const cards = [
-    { label: 'Total Vehicles',     value: summary.totalVehicles ?? '--' },
-    { label: 'Average Speed',      value: (summary.avgSpeed ?? '--') + ' km/h' },
-    { label: 'Avg Congestion',     value: summary.avgCongestion != null
-                                      ? (summary.avgCongestion * 100).toFixed(0) + '%'
-                                      : '--' },
-    { label: 'Recommended Speed',  value: (summary.recommendedSpeed ?? '--') + ' km/h' },
-    { label: 'Worst Segment',      value: summary.worstSegment != null
-                                      ? 'Segment ' + summary.worstSegment
-                                      : '--' },
+    { label: 'Total Vehicles',    value: summary.totalVehicles ?? '--' },
+    { label: 'Average Speed',     value: (summary.avgSpeed ?? '--') + ' km/h' },
+    { label: 'Avg Congestion',    value: summary.avgCongestion != null
+        ? (summary.avgCongestion * 100).toFixed(0) + '%' : '--' },
+    { label: 'Recommended Speed', value: (summary.recommendedSpeed ?? '--') + ' km/h' },
+    { label: 'Worst Segment',     value: worstId != null ? 'Segment ' + worstId : '--' },
   ];
 
   document.getElementById('summaryCards').innerHTML = cards.map(c => `
@@ -318,7 +324,7 @@ function renderSummary(summary) {
   `).join('');
 }
 
-// ─── RENDER SEGMENTS ────────────────────────────────────────
+// ─── RENDER SEGMENTS ──────────────────────────────────────────
 function renderSegments(data) {
   if (!data || data.length === 0) {
     document.getElementById('segments').innerHTML =
@@ -326,28 +332,45 @@ function renderSegments(data) {
     return;
   }
 
-  document.getElementById('segments').innerHTML = data.map(s => {
-    const level = getCongestionLevel(s.congestionIndex);
+  const worstId = getWorstSegmentId(data);
+
+  // sort by congestion descending — worst always at the top
+  const sorted = [...data].sort((a, b) => b.congestionIndex - a.congestionIndex);
+
+  document.getElementById('segments').innerHTML = sorted.map(s => {
+    const level    = getCongestionLevel(s.congestionIndex);
+    const pct      = (s.congestionIndex * 100).toFixed(0);
+    const barColor = getCongestionBarColor(s.congestionIndex);
+    const isWorst  = s.segmentId === worstId;
+    const isCritical = s.congestionIndex >= 0.8;
+
     return `
-      <div class="segment ${level}">
-        <h4>Segment ${s.segmentId}</h4>
+      <div class="segment ${level}${isCritical ? ' critical' : ''}">
+        <h4>
+          Segment ${s.segmentId}
+          ${isWorst ? '<span class="worst-badge">WORST</span>' : ''}
+        </h4>
         <p>Vehicles: <span>${s.vehicleCount}</span></p>
         <p>Speed: <span>${s.avgSpeed} km/h</span></p>
-        <p>Congestion: <span>${(s.congestionIndex * 100).toFixed(0)}%</span></p>
+        <p>Congestion: <span>${pct}%</span></p>
         <p>Rec. Speed: <span>${s.recommendedSpeed} km/h</span></p>
+        <div class="congestion-bar-wrap">
+          <div class="congestion-bar"
+               style="width:${pct}%; background:${barColor}">
+          </div>
+        </div>
       </div>
     `;
   }).join('');
 }
 
-// ─── TRAFFIC LIGHT ──────────────────────────────────────────
+// ─── TRAFFIC LIGHT ────────────────────────────────────────────
 let countdownInterval = null;
-let lastLightState = null;  // only reset timer when STATE changes, not timestamp
+let lastLightState    = null;
 
 function renderTrafficLight(light) {
   if (!light) return;
 
-  // Update light visuals
   ['red','yellow','green'].forEach(c =>
     document.getElementById(c + 'Light').classList.remove('active')
   );
@@ -358,25 +381,21 @@ function renderTrafficLight(light) {
 
   const stateEl = document.getElementById('lightState');
   stateEl.textContent = light.state;
-  stateEl.className = 'light-state ' + light.state;
+  stateEl.className   = 'light-state ' + light.state;
 
   document.getElementById('lightNext').textContent  = light.nextState ?? '--';
   document.getElementById('lightSpeed').textContent = (light.recommendedSpeed ?? '--') + ' km/h';
 
-  // Calculate remaining time from timestamp + duration
-  const start     = new Date(light.timeStamp + 'Z');
-  const elapsed   = Math.floor((Date.now() - start.getTime()) / 1000);
+  const rawTs   = light.timeStamp ?? light.timestamp;
+  const start   = new Date(rawTs.endsWith('Z') ? rawTs : rawTs + 'Z');
+  const elapsed = Math.floor((Date.now() - start.getTime()) / 1000);
   const remaining = Math.max(0, light.duration - elapsed);
 
-  // Only restart countdown when the state actually changes
   if (lastLightState !== light.state) {
     lastLightState = light.state;
-
     if (countdownInterval) clearInterval(countdownInterval);
-
     let timer = remaining;
     document.getElementById('lightTimer').textContent = timer + ' s';
-
     countdownInterval = setInterval(() => {
       timer = Math.max(0, timer - 1);
       document.getElementById('lightTimer').textContent = timer + ' s';
@@ -384,22 +403,15 @@ function renderTrafficLight(light) {
   }
 }
 
-// ─── CHARTS ─────────────────────────────────────────────────
+// ─── CHARTS ───────────────────────────────────────────────────
 const chartDefaults = {
   responsive: true,
   maintainAspectRatio: false,
-  plugins: {
-    legend: { labels: { color: '#94a3b8', font: { size: 11 } } }
-  },
+  animation: { duration: 400 },
+  plugins: { legend: { labels: { color: '#94a3b8', font: { size: 11 } } } },
   scales: {
-    x: {
-      ticks: { color: '#64748b', font: { size: 10 } },
-      grid:  { color: 'rgba(255,255,255,0.05)' }
-    },
-    y: {
-      ticks: { color: '#64748b', font: { size: 10 } },
-      grid:  { color: 'rgba(255,255,255,0.05)' }
-    }
+    x: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+    y: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } }
   }
 };
 
@@ -408,67 +420,42 @@ let barChart, speedChart, congestionChart;
 function initCharts() {
   barChart = new Chart(document.getElementById('barChart'), {
     type: 'bar',
-    data: {
-      labels: [],
-      datasets: [{
-        label: 'Congestion index',
-        data: [],
-        backgroundColor: ctx => {
-          const v = ctx.raw;
-          if (v >= 0.7) return 'rgba(239,68,68,0.7)';
-          if (v >= 0.4) return 'rgba(250,204,21,0.7)';
-          return 'rgba(34,197,94,0.7)';
-        },
-        borderRadius: 4,
-      }]
-    },
-    options: {
-      ...chartDefaults,
-      scales: {
-        ...chartDefaults.scales,
-        y: { ...chartDefaults.scales.y, min: 0, max: 1 }
-      }
-    }
+    data: { labels: [], datasets: [{
+      label: 'Congestion index',
+      data: [],
+      backgroundColor: ctx => {
+        const v = ctx.raw;
+        if (v >= 0.7) return 'rgba(239,68,68,0.75)';
+        if (v >= 0.4) return 'rgba(250,204,21,0.75)';
+        return 'rgba(34,197,94,0.75)';
+      },
+      borderRadius: 4
+    }]},
+    options: { ...chartDefaults,
+      scales: { ...chartDefaults.scales,
+        y: { ...chartDefaults.scales.y, min: 0, max: 1 } } }
   });
 
   speedChart = new Chart(document.getElementById('speedChart'), {
     type: 'line',
-    data: {
-      labels: [],
-      datasets: [{
-        label: 'Avg speed (km/h)',
-        data: [],
-        borderColor: '#38bdf8',
-        backgroundColor: 'rgba(56,189,248,0.1)',
-        tension: 0.3,
-        fill: true,
-        pointRadius: 3,
-      }]
-    },
+    data: { labels: [], datasets: [{
+      label: 'Avg speed (km/h)', data: [],
+      borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.1)',
+      tension: 0.3, fill: true, pointRadius: 3
+    }]},
     options: chartDefaults
   });
 
   congestionChart = new Chart(document.getElementById('congestionChart'), {
     type: 'line',
-    data: {
-      labels: [],
-      datasets: [{
-        label: 'Avg congestion',
-        data: [],
-        borderColor: '#f97316',
-        backgroundColor: 'rgba(249,115,22,0.1)',
-        tension: 0.3,
-        fill: true,
-        pointRadius: 3,
-      }]
-    },
-    options: {
-      ...chartDefaults,
-      scales: {
-        ...chartDefaults.scales,
-        y: { ...chartDefaults.scales.y, min: 0, max: 1 }
-      }
-    }
+    data: { labels: [], datasets: [{
+      label: 'Avg congestion', data: [],
+      borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.1)',
+      tension: 0.3, fill: true, pointRadius: 3
+    }]},
+    options: { ...chartDefaults,
+      scales: { ...chartDefaults.scales,
+        y: { ...chartDefaults.scales.y, min: 0, max: 1 } } }
   });
 }
 
@@ -477,22 +464,24 @@ const history = { time: [], speed: [], congestion: [] };
 function updateCharts(segments, summary) {
   if (!segments || segments.length === 0) return;
 
-  // Bar chart uses per-segment data
-  barChart.data.labels   = segments.map(s => 'Seg ' + s.segmentId);
-  barChart.data.datasets[0].data = segments.map(s => s.congestionIndex);
+  // bar chart sorted same as segment cards
+  const sorted = [...segments].sort((a, b) => b.congestionIndex - a.congestionIndex);
+  barChart.data.labels = sorted.map(s => 'Seg ' + s.segmentId);
+  barChart.data.datasets[0].data = sorted.map(s => s.congestionIndex);
   barChart.update();
 
-  // Trend charts use summary values (already computed server-side)
+  const avgSpeed = summary?.avgSpeed
+    ?? segments.reduce((sum, s) => sum + s.avgSpeed, 0) / segments.length;
+  const avgCong  = summary?.avgCongestion
+    ?? segments.reduce((sum, s) => sum + s.congestionIndex, 0) / segments.length;
+
   const timeLabel = new Date().toLocaleTimeString();
   history.time.push(timeLabel);
-  history.speed.push(summary?.avgSpeed ?? 0);
-  history.congestion.push(summary?.avgCongestion ?? 0);
+  history.speed.push(avgSpeed);
+  history.congestion.push(avgCong);
 
-  // Keep last 12 data points
-  if (history.time.length > 12) {
-    history.time.shift();
-    history.speed.shift();
-    history.congestion.shift();
+  if (history.time.length > 15) {
+    history.time.shift(); history.speed.shift(); history.congestion.shift();
   }
 
   speedChart.data.labels = history.time;
@@ -504,28 +493,84 @@ function updateCharts(segments, summary) {
   congestionChart.update();
 }
 
-// ─── MAIN LOOP ───────────────────────────────────────────────
-async function updateDashboard() {
-  try {
-    const [segments, summary, light] = await Promise.all([
-      fetchSegments(),
-      fetchSummary(),
-      fetchLight()
-    ]);
+// ─── LAST UPDATED ─────────────────────────────────────────────
+function markUpdated() {
+  document.getElementById('lastUpdated').textContent =
+    'Updated ' + new Date().toLocaleTimeString();
+}
 
-    renderSummary(summary);
-    renderSegments(segments);
-    updateCharts(segments, summary);
-    renderTrafficLight(light);
+// ─── SIGNALR ──────────────────────────────────────────────────
+const connection = new signalR.HubConnectionBuilder()
+  .withUrl("http://localhost:5052/trafficHub")
+  .withAutomaticReconnect()
+  .build();
+
+connection.onreconnecting(() => {
+  document.getElementById('statusDot').classList.add('disconnected');
+});
+connection.onreconnected(() => {
+  document.getElementById('statusDot').classList.remove('disconnected');
+});
+connection.onclose(() => {
+  document.getElementById('statusDot').classList.add('disconnected');
+});
+
+connection.on("SegmentsUpdated", (segments) => {
+  if (!segments || segments.length === 0) return;
+  latestSegments = segments;
+  renderSegments(segments);
+  // patch worstSegment in summary using live data
+  if (latestSummary) {
+    latestSummary = { ...latestSummary, worstSegment: getWorstSegmentId(segments) };
+    renderSummary(latestSummary, segments);
+  }
+  updateCharts(latestSegments, latestSummary);
+  markUpdated();
+});
+
+connection.on("SummaryUpdated", (summary) => {
+  latestSummary = summary;
+  renderSummary(summary, latestSegments);
+});
+
+connection.on("LightUpdated", (light) => {
+  renderTrafficLight(light);
+});
+
+async function startSignalR() {
+  try {
+    await connection.start();
+    console.log("SignalR connected");
   } catch (err) {
-    console.error('Dashboard error:', err);
+    console.warn("SignalR failed:", err);
+    document.getElementById('statusDot').classList.add('disconnected');
   }
 }
 
+// ─── POLLING (safety net — always runs) ───────────────────────
+async function updateDashboard() {
+  try {
+    const [segments, summary, light] = await Promise.all([
+      fetchSegments(), fetchSummary(), fetchLight()
+    ]);
+    latestSegments = segments;
+    latestSummary  = summary;
+    renderSummary(summary, segments);
+    renderSegments(segments);
+    updateCharts(segments, summary);
+    renderTrafficLight(light);
+    markUpdated();
+  } catch (err) {
+    console.error("Poll error:", err);
+  }
+}
+
+// ─── INIT ──────────────────────────────────────────────────────
 function init() {
   initCharts();
   updateDashboard();
   setInterval(updateDashboard, 5000);
+  startSignalR();
 }
 
 init();
