@@ -3,31 +3,148 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Traffic Dashboard</title>
+<title>Smart Traffic — Control Room</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
 <style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
+/* ── Reset & base ──────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-body {
-  font-family: Arial, sans-serif;
-  background: #0f172a;
-  color: #e2e8f0;
-  height: 100vh;
-  overflow: hidden;
+:root {
+  --bg:         #07111e;
+  --surface:    #0d1e31;
+  --surface-hi: #13283f;
+  --border:     #1b3350;
+  --accent:     #2563eb;
+  --accent-dim: #1d4ed8;
+  --red:        #ef4444;
+  --green:      #22c55e;
+  --yellow:     #facc15;
+  --text:       #e2e8f0;
+  --text-2:     #94a3b8;
+  --text-3:     #475569;
+  --header-h:   52px;
 }
 
-.container {
-  padding: 14px;
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
   height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Header ───────────────────────────────────────────────── */
+.site-header {
+  height: var(--header-h);
+  min-height: var(--header-h);
+  background: #05101b;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+  z-index: 50;
+  flex-shrink: 0;
+}
+
+.header-left  { display: flex; align-items: center; gap: 10px; }
+.header-right { display: flex; align-items: center; gap: 12px; }
+
+.site-logo {
+  width: 28px; height: 28px;
+  background: var(--accent);
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 900; color: #fff;
+  letter-spacing: -1px;
+  flex-shrink: 0;
+}
+
+.site-title {
+  font-size: 0.9em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  text-transform: uppercase;
+}
+
+.road-label {
+  font-size: 0.7em;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+}
+
+.status-pill {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 0.7em; color: var(--text-3);
+}
+
+.status-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  flex-shrink: 0;
+  animation: blink 2s infinite;
+}
+.status-dot.disconnected { background: var(--red); animation: none; }
+
+.last-updated { font-size: 0.68em; color: var(--text-3); }
+
+/* Violations trigger button */
+.violations-btn {
+  display: flex; align-items: center; gap: 6px;
+  background: #1a0a0a;
+  border: 1px solid #3d0f0f;
+  color: #fca5a5;
+  font-size: 0.78em;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.2s, border-color 0.2s;
+  letter-spacing: 0.02em;
+}
+.violations-btn:hover { background: #261010; border-color: #7f1d1d; }
+
+.violations-btn.has-unread {
+  animation: btnPulse 2s infinite;
+}
+
+.v-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px;
+  background: var(--red);
+  color: #fff;
+  font-size: 0.75em;
+  font-weight: 700;
+  border-radius: 9px;
+  padding: 0 4px;
+  line-height: 1;
+}
+.v-badge.hidden { display: none; }
+
+/* ── Main container ───────────────────────────────────────── */
+.container {
+  padding: 12px;
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .top {
   display: grid;
-  grid-template-columns: 1fr 1fr 260px;
+  grid-template-columns: 1fr 1fr 250px;
   gap: 10px;
 }
 
@@ -39,194 +156,345 @@ body {
   min-height: 0;
 }
 
+/* ── Cards ────────────────────────────────────────────────── */
 .card {
-  background: #1e293b;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--accent-dim);  /* signature: control-room stripe */
+  border-radius: 10px;
   padding: 12px;
-  border-radius: 12px;
-  box-shadow: 0 0 10px rgba(0,0,0,0.3);
-}
-
-.card h3 {
-  font-size: 0.85em;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #94a3b8;
-  margin-bottom: 10px;
-}
-
-/* SUMMARY */
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-}
-
-.metric-card {
-  background: #0f172a;
-  border-radius: 8px;
-  padding: 10px;
-  transition: background 0.3s;
-}
-
-.metric-label { font-size: 0.7em; color: #64748b; margin-bottom: 4px; }
-.metric-value { font-size: 1.25em; font-weight: bold; color: #f1f5f9; }
-
-/* SEGMENTS */
-.segments-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  max-height: 220px;
-  overflow-y: auto;
-  padding-right: 2px;
-}
-
-.segments-grid::-webkit-scrollbar { width: 4px; }
-.segments-grid::-webkit-scrollbar-track { background: transparent; }
-.segments-grid::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
-
-.segment {
-  background: #0f172a;
-  border-radius: 8px;
-  padding: 8px;
-  border-left: 4px solid #334155;
-  font-size: 0.78em;
-  position: relative;
-  transition: border-color 0.4s;
-}
-
-.segment p { color: #94a3b8; margin: 2px 0; }
-.segment p span { color: #e2e8f0; font-weight: bold; }
-.segment h4 { font-size: 0.85em; margin-bottom: 4px; color: #cbd5e1; display: flex; justify-content: space-between; align-items: center; }
-
-.segment.low    { border-left-color: #22c55e; }
-.segment.medium { border-left-color: #facc15; }
-.segment.high   { border-left-color: #ef4444; }
-
-/* worst segment badge */
-.worst-badge {
-  font-size: 0.65em;
-  background: #ef4444;
-  color: white;
-  padding: 1px 5px;
-  border-radius: 4px;
-  font-weight: bold;
-}
-
-/* congestion progress bar */
-.congestion-bar-wrap {
-  background: #1e293b;
-  border-radius: 3px;
-  height: 4px;
-  margin-top: 5px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.3);
   overflow: hidden;
 }
 
-.congestion-bar {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.6s ease, background-color 0.4s;
-}
-
-/* alert pulse for high congestion */
-@keyframes alertPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
-  50%       { box-shadow: 0 0 0 6px rgba(239,68,68,0.25); }
-}
-
-.segment.critical {
-  animation: alertPulse 1.5s infinite;
-}
-
-/* TRAFFIC LIGHT */
-.light-panel { display: flex; align-items: center; gap: 16px; }
-
-.traffic-light {
-  width: 44px; padding: 8px;
-  background: #0a0a0a;
-  border-radius: 10px;
-  display: flex; flex-direction: column; gap: 8px;
-  border: 1px solid #1e293b;
-}
-
-.light {
-  width: 26px; height: 26px;
-  border-radius: 50%;
-  opacity: 0.15;
-  transition: opacity 0.3s, box-shadow 0.3s;
-}
-
-.red    { background: #ef4444; }
-.yellow { background: #facc15; }
-.green  { background: #22c55e; }
-
-.light.active { opacity: 1; box-shadow: 0 0 12px currentColor; }
-
-.light-info { display: flex; flex-direction: column; gap: 6px; }
-
-.light-state { font-size: 1.1em; font-weight: bold; }
-.light-state.RED    { color: #ef4444; }
-.light-state.YELLOW { color: #facc15; }
-.light-state.GREEN  { color: #22c55e; }
-
-.light-detail { font-size: 0.78em; color: #64748b; }
-.light-detail span { color: #94a3b8; }
-
-canvas { width: 100% !important; height: 160px !important; }
-
-/* STATUS ROW */
-.header-row {
+.card-header-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
-.status-row { display: flex; align-items: center; gap: 6px; }
-
-.status-dot {
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: #22c55e;
-  animation: pulse 2s infinite;
+.card h3 {
+  font-size: 0.72em;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+  font-weight: 600;
 }
 
-.status-dot.disconnected { background: #ef4444; animation: none; }
+/* ── Summary metrics ──────────────────────────────────────── */
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 7px;
+}
 
-.last-updated { font-size: 0.68em; color: #475569; }
+.metric-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 9px 10px;
+}
+.metric-label { font-size: 0.67em; color: var(--text-3); margin-bottom: 3px; }
+.metric-value { font-size: 1.2em; font-weight: 700; color: var(--text); }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.4; }
+/* ── Segments ─────────────────────────────────────────────── */
+.segments-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 7px;
+  max-height: 210px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.segments-grid::-webkit-scrollbar { width: 3px; }
+.segments-grid::-webkit-scrollbar-track { background: transparent; }
+.segments-grid::-webkit-scrollbar-thumb { background: #1b3350; border-radius: 2px; }
+
+.segment {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 7px;
+  padding: 8px;
+  font-size: 0.75em;
+  transition: border-left-color 0.4s;
+}
+.segment.low    { border-left-color: var(--green); }
+.segment.medium { border-left-color: var(--yellow); }
+.segment.high   { border-left-color: var(--red); }
+
+.segment h4 {
+  font-size: 0.85em; margin-bottom: 4px;
+  color: var(--text-2);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.segment p { color: var(--text-3); margin: 2px 0; }
+.segment p span { color: var(--text); font-weight: 600; }
+
+.worst-badge {
+  font-size: 0.6em; background: var(--red); color: #fff;
+  padding: 1px 5px; border-radius: 3px; font-weight: 700;
+}
+
+.congestion-bar-wrap {
+  background: var(--surface); border-radius: 3px; height: 3px;
+  margin-top: 5px; overflow: hidden;
+}
+.congestion-bar {
+  height: 100%; border-radius: 3px;
+  transition: width 0.6s ease, background-color 0.4s;
+}
+
+@keyframes alertPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+  50%       { box-shadow: 0 0 0 5px rgba(239,68,68,0.2); }
+}
+.segment.critical { animation: alertPulse 1.5s infinite; }
+
+/* ── Traffic light ────────────────────────────────────────── */
+.light-panel { display: flex; align-items: center; gap: 14px; }
+
+.traffic-light {
+  width: 42px; padding: 8px 7px;
+  background: #030a12;
+  border-radius: 10px;
+  display: flex; flex-direction: column; gap: 7px;
+  border: 1px solid #0a1829;
+  box-shadow: inset 0 0 8px rgba(0,0,0,0.5);
+  flex-shrink: 0;
+}
+.light {
+  width: 26px; height: 26px; border-radius: 50%;
+  opacity: 0.12;
+  transition: opacity 0.3s, box-shadow 0.3s;
+}
+.red    { background: var(--red); }
+.yellow { background: var(--yellow); }
+.green  { background: var(--green); }
+.light.active { opacity: 1; }
+.light.active.red    { box-shadow: 0 0 14px var(--red); }
+.light.active.yellow { box-shadow: 0 0 14px var(--yellow); }
+.light.active.green  { box-shadow: 0 0 14px var(--green); }
+
+.light-info { display: flex; flex-direction: column; gap: 5px; }
+.light-state { font-size: 1.1em; font-weight: 700; }
+.light-state.RED    { color: var(--red); }
+.light-state.YELLOW { color: var(--yellow); }
+.light-state.GREEN  { color: var(--green); }
+
+.light-row { font-size: 0.72em; color: var(--text-3); }
+.light-row span { color: var(--text-2); font-weight: 600; }
+
+/* ── Charts ───────────────────────────────────────────────── */
+canvas { width: 100% !important; height: 150px !important; }
+
+/* ── Drawer overlay ───────────────────────────────────────── */
+.drawer-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(2px);
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.3s;
+  z-index: 98;
+}
+.drawer-overlay.visible { opacity: 1; pointer-events: all; }
+
+/* ── Violations drawer ────────────────────────────────────── */
+.violations-drawer {
+  position: fixed;
+  top: 0; right: 0;
+  width: 420px; height: 100vh;
+  background: #0a1520;
+  border-left: 2px solid var(--red);
+  display: flex; flex-direction: column;
+  z-index: 99;
+  transform: translateX(100%);
+  transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: -8px 0 32px rgba(0,0,0,0.5);
+}
+.violations-drawer.open { transform: translateX(0); }
+
+.drawer-header {
+  padding: 16px;
+  border-bottom: 1px solid #1b2f40;
+  flex-shrink: 0;
+}
+
+.drawer-title-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+}
+.drawer-title {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 0.9em; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: #fca5a5;
+}
+
+.drawer-close {
+  background: none; border: none;
+  color: var(--text-3); font-size: 1em;
+  cursor: pointer; padding: 4px;
+  line-height: 1;
+  transition: color 0.2s;
+}
+.drawer-close:hover { color: var(--text); }
+
+.drawer-stats {
+  display: flex; gap: 16px;
+}
+.drawer-stat {
+  font-size: 0.7em; color: var(--text-3);
+}
+.drawer-stat strong { color: var(--text-2); font-weight: 700; display: block; font-size: 1.3em; }
+
+.drawer-body {
+  flex: 1; overflow-y: auto;
+  padding: 0;
+}
+.drawer-body::-webkit-scrollbar { width: 3px; }
+.drawer-body::-webkit-scrollbar-track { background: transparent; }
+.drawer-body::-webkit-scrollbar-thumb { background: #1b3350; border-radius: 2px; }
+
+.violations-table {
+  width: 100%; border-collapse: collapse;
+  font-size: 0.75em;
+}
+.violations-table thead tr {
+  background: #07111e;
+  position: sticky; top: 0; z-index: 1;
+}
+.violations-table th {
+  padding: 8px 12px;
+  color: var(--text-3); text-align: left;
+  font-weight: 600; letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border);
+}
+.violations-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid #0e1e2e;
+  color: var(--text-2);
+}
+.violations-table tr:hover td { background: #0f2035; }
+
+.plate-cell {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 1.1em; font-weight: 700;
+  color: var(--text);
+  direction: rtl; text-align: right;
+  letter-spacing: 0.05em;
+}
+.speed-cell { color: var(--red); font-weight: 700; }
+.empty-row td {
+  text-align: center; color: var(--text-3);
+  padding: 32px 0; font-size: 0.9em;
+}
+
+/* ── Toasts ───────────────────────────────────────────────── */
+.toast-container {
+  position: fixed;
+  bottom: 20px; right: 20px;
+  display: flex; flex-direction: column; gap: 8px;
+  z-index: 200;
+  align-items: flex-end;
+}
+
+.toast {
+  background: #1a0808;
+  border: 1px solid #7f1d1d;
+  border-left: 3px solid var(--red);
+  border-radius: 8px;
+  padding: 10px 14px;
+  width: 300px;
+  display: flex; flex-direction: column; gap: 3px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  animation: toastIn 0.25s ease;
+  cursor: pointer;
+}
+.toast:hover { background: #220c0c; }
+
+.toast-label {
+  font-size: 0.65em; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: #f87171;
+}
+.toast-plate {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 1em; font-weight: 700;
+  color: var(--text); direction: rtl; text-align: right;
+}
+.toast-detail { font-size: 0.72em; color: #94a3b8; }
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes toastOut {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(20px); }
+}
+
+/* ── Animations ───────────────────────────────────────────── */
+@keyframes blink {
+  0%, 100% { opacity: 1; } 50% { opacity: 0.4; }
+}
+@keyframes btnPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+  50%       { box-shadow: 0 0 0 4px rgba(239,68,68,0.2); }
 }
 </style>
 </head>
 <body>
+
+<!-- ── Header ─────────────────────────────────────────────── -->
+<header class="site-header">
+  <div class="header-left">
+    <div class="site-logo">ST</div>
+    <span class="site-title">Smart Traffic</span>
+    <span class="road-label">road_1</span>
+  </div>
+  <div class="header-right">
+    <div class="status-pill">
+      <div id="statusDot" class="status-dot"></div>
+      <span id="lastUpdated" class="last-updated">Connecting…</span>
+    </div>
+    <button id="violationsBtn" class="violations-btn" onclick="openDrawer()">
+      <!-- alert icon -->
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+      Violations
+      <span id="violationsBadge" class="v-badge hidden">0</span>
+    </button>
+  </div>
+</header>
+
+<!-- ── Main grid ───────────────────────────────────────────── -->
 <div class="container">
 
   <div class="top">
 
-    <!-- SUMMARY -->
+    <!-- Summary -->
     <div class="card">
-      <div class="header-row">
-        <div class="status-row">
-          <div id="statusDot" class="status-dot"></div>
-          <h3 style="margin:0">Overview</h3>
-        </div>
-        <span id="lastUpdated" class="last-updated">--</span>
+      <div class="card-header-row">
+        <h3>Overview</h3>
       </div>
       <div id="summaryCards" class="summary-grid"></div>
     </div>
 
-    <!-- SEGMENTS -->
+    <!-- Segments -->
     <div class="card">
-      <h3>Road Segments <span style="color:#475569;font-weight:normal;font-size:0.85em">(sorted by congestion)</span></h3>
+      <div class="card-header-row">
+        <h3>Road Segments</h3>
+        <span style="font-size:0.65em;color:var(--text-3)">sorted by congestion</span>
+      </div>
       <div id="segments" class="segments-grid"></div>
     </div>
 
-    <!-- TRAFFIC LIGHT -->
+    <!-- Traffic Light -->
     <div class="card">
-      <h3>Traffic Signal</h3>
+      <div class="card-header-row"><h3>Traffic Signal</h3></div>
       <div class="light-panel">
         <div class="traffic-light">
           <div id="redLight"    class="light red"></div>
@@ -235,14 +503,14 @@ canvas { width: 100% !important; height: 160px !important; }
         </div>
         <div class="light-info">
           <div id="lightState" class="light-state">--</div>
-          <div class="light-detail">Timer: <span id="lightTimer">--</span></div>
-          <div class="light-detail">Next: <span id="lightNext">--</span></div>
-          <div class="light-detail">Rec. Speed: <span id="lightSpeed">--</span></div>
+          <div class="light-row">Timer  <span id="lightTimer">--</span></div>
+          <div class="light-row">Next   <span id="lightNext">--</span></div>
+          <div class="light-row">Rec.   <span id="lightSpeed">--</span></div>
         </div>
       </div>
     </div>
 
-  </div>
+  </div><!-- /top -->
 
   <div class="bottom">
     <div class="card"><h3>Congestion per segment</h3><canvas id="barChart"></canvas></div>
@@ -250,15 +518,77 @@ canvas { width: 100% !important; height: 160px !important; }
     <div class="card"><h3>Congestion trend</h3><canvas id="congestionChart"></canvas></div>
   </div>
 
-</div>
+</div><!-- /container -->
+
+<!-- ── Violations Drawer ───────────────────────────────────── -->
+<div id="drawerOverlay" class="drawer-overlay" onclick="closeDrawer()"></div>
+
+<aside id="violationsDrawer" class="violations-drawer">
+
+  <div class="drawer-header">
+    <div class="drawer-title-row">
+      <div class="drawer-title">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0110 0v4"/>
+        </svg>
+        Speed Violations
+      </div>
+      <button class="drawer-close" onclick="closeDrawer()">✕</button>
+    </div>
+    <div class="drawer-stats">
+      <div class="drawer-stat">
+        <strong id="drawerTotal">0</strong>
+        Total
+      </div>
+      <div class="drawer-stat">
+        <strong id="drawerMax">—</strong>
+        Highest speed
+      </div>
+      <div class="drawer-stat">
+        <strong id="drawerLast">—</strong>
+        Last seen
+      </div>
+    </div>
+  </div>
+
+  <div class="drawer-body">
+    <table class="violations-table">
+      <thead>
+        <tr>
+          <th>Plate</th>
+          <th>Count</th>
+          <th>Speed</th>
+          <th>Road</th>
+          <th>Time</th>
+        </tr>
+      </thead>
+      <tbody id="violationsTbody">
+        <tr class="empty-row"><td colspan="4">No violations recorded yet</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</aside>
+
+<!-- ── Toasts ──────────────────────────────────────────────── -->
+<div id="toastContainer" class="toast-container"></div>
 
 <script>
-const API = "http://localhost:5052/api/traffic";
+// ─── CONFIG ────────────────────────────────────────────────
+const API = "http://localhost:5052/api";
 
+// ─── STATE ─────────────────────────────────────────────────
 let latestSegments = [];
 let latestSummary  = null;
+let allViolations  = [];
+let groupedViolations = [];
+let unreadCount    = 0;
+let drawerOpen     = false;
 
-// ─── UTILITIES ────────────────────────────────────────────────
+// ─── UTILITIES ─────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+
 function getCongestionLevel(ci) {
   if (ci < 0.4) return 'low';
   if (ci < 0.7) return 'medium';
@@ -271,17 +601,28 @@ function getCongestionBarColor(ci) {
   return '#22c55e';
 }
 
-// always compute worst from live segment data — avoids stale summary mismatch
-function getWorstSegmentId(segments) {
-  if (!segments || segments.length === 0) return null;
-  return segments.reduce((max, s) =>
-    s.congestionIndex > max.congestionIndex ? s : max
-  ).segmentId;
+function getWorstSegmentId(segs) {
+  if (!segs || segs.length === 0) return null;
+  return segs.reduce((m, s) => s.congestionIndex > m.congestionIndex ? s : m).segmentId;
 }
 
-// ─── FETCH ────────────────────────────────────────────────────
+function fmtTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function timeAgo(iso) {
+  if (!iso) return '—';
+  const diff = Math.floor((Date.now() - new Date(iso.endsWith('Z') ? iso : iso + 'Z').getTime()) / 1000);
+  if (diff < 60)  return diff + 's ago';
+  if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+  return Math.floor(diff / 3600) + 'h ago';
+}
+
+// ─── FETCH ─────────────────────────────────────────────────
 async function fetchSegments() {
-  const res = await fetch(`${API}/segments`);
+  const res = await fetch(`${API}/traffic/segments`);
   const raw = await res.json();
   if (!Array.isArray(raw) || raw.length === 0) return [];
   const map = new Map();
@@ -290,33 +631,34 @@ async function fetchSegments() {
 }
 
 async function fetchSummary() {
-  const res = await fetch(`${API}/summary`);
+  const res = await fetch(`${API}/traffic/summary`);
   return await res.json();
 }
 
 async function fetchLight() {
-  const res = await fetch(`${API}/light`);
+  const res = await fetch(`${API}/traffic/light`);
   return await res.json();
 }
 
-// ─── RENDER SUMMARY ───────────────────────────────────────────
-function renderSummary(summary, segments) {
+async function fetchViolations() {
+  const res = await fetch(`${API}/violations?limit=100`);
+  return await res.json();
+}
+
+// ─── RENDER: SUMMARY ───────────────────────────────────────
+function renderSummary(summary, segs) {
   if (!summary) return;
-
-  // always derive worst from live segment data
-  const worstId = getWorstSegmentId(segments || latestSegments)
-    ?? summary.worstSegment;
-
+  const worstId = getWorstSegmentId(segs || latestSegments) ?? summary.worstSegment;
   const cards = [
-    { label: 'Total Vehicles',    value: summary.totalVehicles ?? '--' },
-    { label: 'Average Speed',     value: (summary.avgSpeed ?? '--') + ' km/h' },
+    { label: 'Total Vehicles',    value: summary.totalVehicles ?? '—' },
+    { label: 'Avg Speed',         value: (summary.avgSpeed ?? '—') + ' km/h' },
     { label: 'Avg Congestion',    value: summary.avgCongestion != null
-        ? (summary.avgCongestion * 100).toFixed(0) + '%' : '--' },
-    { label: 'Recommended Speed', value: (summary.recommendedSpeed ?? '--') + ' km/h' },
-    { label: 'Worst Segment',     value: worstId != null ? 'Segment ' + worstId : '--' },
+        ? (summary.avgCongestion * 100).toFixed(0) + '%' : '—' },
+    { label: 'Rec. Speed',        value: (summary.recommendedSpeed ?? '—') + ' km/h' },
+    { label: 'Worst Segment',     value: worstId != null ? 'Segment ' + worstId : '—' },
+    { label: 'Violations Today',  value: allViolations.length },
   ];
-
-  document.getElementById('summaryCards').innerHTML = cards.map(c => `
+  $('summaryCards').innerHTML = cards.map(c => `
     <div class="metric-card">
       <div class="metric-label">${c.label}</div>
       <div class="metric-value">${c.value}</div>
@@ -324,26 +666,21 @@ function renderSummary(summary, segments) {
   `).join('');
 }
 
-// ─── RENDER SEGMENTS ──────────────────────────────────────────
+// ─── RENDER: SEGMENTS ──────────────────────────────────────
 function renderSegments(data) {
   if (!data || data.length === 0) {
-    document.getElementById('segments').innerHTML =
-      '<p style="color:#64748b;font-size:0.8em">No segment data yet</p>';
+    $('segments').innerHTML = '<p style="color:var(--text-3);font-size:0.8em">No segment data yet</p>';
     return;
   }
-
   const worstId = getWorstSegmentId(data);
+  const sorted  = [...data].sort((a, b) => b.congestionIndex - a.congestionIndex);
 
-  // sort by congestion descending — worst always at the top
-  const sorted = [...data].sort((a, b) => b.congestionIndex - a.congestionIndex);
-
-  document.getElementById('segments').innerHTML = sorted.map(s => {
-    const level    = getCongestionLevel(s.congestionIndex);
-    const pct      = (s.congestionIndex * 100).toFixed(0);
-    const barColor = getCongestionBarColor(s.congestionIndex);
-    const isWorst  = s.segmentId === worstId;
+  $('segments').innerHTML = sorted.map(s => {
+    const level      = getCongestionLevel(s.congestionIndex);
+    const pct        = (s.congestionIndex * 100).toFixed(0);
+    const barColor   = getCongestionBarColor(s.congestionIndex);
+    const isWorst    = s.segmentId === worstId;
     const isCritical = s.congestionIndex >= 0.8;
-
     return `
       <div class="segment ${level}${isCritical ? ' critical' : ''}">
         <h4>
@@ -353,188 +690,326 @@ function renderSegments(data) {
         <p>Vehicles: <span>${s.vehicleCount}</span></p>
         <p>Speed: <span>${s.avgSpeed} km/h</span></p>
         <p>Congestion: <span>${pct}%</span></p>
-        <p>Rec. Speed: <span>${s.recommendedSpeed} km/h</span></p>
+        <p>Rec.: <span>${s.recommendedSpeed} km/h</span></p>
         <div class="congestion-bar-wrap">
-          <div class="congestion-bar"
-               style="width:${pct}%; background:${barColor}">
-          </div>
+          <div class="congestion-bar" style="width:${pct}%;background:${barColor}"></div>
         </div>
-      </div>
-    `;
+      </div>`;
   }).join('');
 }
 
-// ─── TRAFFIC LIGHT ────────────────────────────────────────────
+// ─── RENDER: TRAFFIC LIGHT ─────────────────────────────────
 let countdownInterval = null;
 let lastLightState    = null;
 
 function renderTrafficLight(light) {
   if (!light) return;
+  ['red','yellow','green'].forEach(c => $(`${c}Light`).classList.remove('active'));
+  if (light.state === 'RED')    $('redLight').classList.add('active');
+  if (light.state === 'YELLOW') $('yellowLight').classList.add('active');
+  if (light.state === 'GREEN')  $('greenLight').classList.add('active');
 
-  ['red','yellow','green'].forEach(c =>
-    document.getElementById(c + 'Light').classList.remove('active')
-  );
-
-  if (light.state === 'RED')    document.getElementById('redLight').classList.add('active');
-  if (light.state === 'YELLOW') document.getElementById('yellowLight').classList.add('active');
-  if (light.state === 'GREEN')  document.getElementById('greenLight').classList.add('active');
-
-  const stateEl = document.getElementById('lightState');
+  const stateEl = $('lightState');
   stateEl.textContent = light.state;
   stateEl.className   = 'light-state ' + light.state;
+  $('lightNext').textContent  = light.nextState ?? '—';
+  $('lightSpeed').textContent = (light.recommendedSpeed ?? '—') + ' km/h';
 
-  document.getElementById('lightNext').textContent  = light.nextState ?? '--';
-  document.getElementById('lightSpeed').textContent = (light.recommendedSpeed ?? '--') + ' km/h';
-
-  const rawTs   = light.timeStamp ?? light.timestamp;
-  const start   = new Date(rawTs.endsWith('Z') ? rawTs : rawTs + 'Z');
-  const elapsed = Math.floor((Date.now() - start.getTime()) / 1000);
+  const rawTs     = light.timeStamp ?? light.timestamp;
+  const start     = new Date(rawTs.endsWith('Z') ? rawTs : rawTs + 'Z');
+  const elapsed   = Math.floor((Date.now() - start.getTime()) / 1000);
   const remaining = Math.max(0, light.duration - elapsed);
 
   if (lastLightState !== light.state) {
     lastLightState = light.state;
     if (countdownInterval) clearInterval(countdownInterval);
     let timer = remaining;
-    document.getElementById('lightTimer').textContent = timer + ' s';
+    $('lightTimer').textContent = timer + ' s';
     countdownInterval = setInterval(() => {
       timer = Math.max(0, timer - 1);
-      document.getElementById('lightTimer').textContent = timer + ' s';
+      $('lightTimer').textContent = timer + ' s';
     }, 1000);
   }
 }
 
-// ─── CHARTS ───────────────────────────────────────────────────
-const chartDefaults = {
-  responsive: true,
-  maintainAspectRatio: false,
+// ─── CHARTS ────────────────────────────────────────────────
+const chartBase = {
+  responsive: true, maintainAspectRatio: false,
   animation: { duration: 400 },
-  plugins: { legend: { labels: { color: '#94a3b8', font: { size: 11 } } } },
+  plugins: { legend: { labels: { color: '#94a3b8', font: { size: 10 }, boxWidth: 10 } } },
   scales: {
-    x: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
-    y: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } }
+    x: { ticks: { color: '#475569', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+    y: { ticks: { color: '#475569', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.04)' } }
   }
 };
 
 let barChart, speedChart, congestionChart;
 
 function initCharts() {
-  barChart = new Chart(document.getElementById('barChart'), {
+  barChart = new Chart($('barChart'), {
     type: 'bar',
-    data: { labels: [], datasets: [{
-      label: 'Congestion index',
-      data: [],
+    data: { labels: [], datasets: [{ label: 'Congestion index', data: [],
       backgroundColor: ctx => {
         const v = ctx.raw;
-        if (v >= 0.7) return 'rgba(239,68,68,0.75)';
-        if (v >= 0.4) return 'rgba(250,204,21,0.75)';
-        return 'rgba(34,197,94,0.75)';
-      },
-      borderRadius: 4
-    }]},
-    options: { ...chartDefaults,
-      scales: { ...chartDefaults.scales,
-        y: { ...chartDefaults.scales.y, min: 0, max: 1 } } }
+        return v >= 0.7 ? 'rgba(239,68,68,0.7)' : v >= 0.4 ? 'rgba(250,204,21,0.7)' : 'rgba(34,197,94,0.7)';
+      }, borderRadius: 4 }]},
+    options: { ...chartBase, scales: { ...chartBase.scales,
+      y: { ...chartBase.scales.y, min: 0, max: 1 } } }
   });
 
-  speedChart = new Chart(document.getElementById('speedChart'), {
+  speedChart = new Chart($('speedChart'), {
     type: 'line',
-    data: { labels: [], datasets: [{
-      label: 'Avg speed (km/h)', data: [],
-      borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.1)',
-      tension: 0.3, fill: true, pointRadius: 3
-    }]},
-    options: chartDefaults
+    data: { labels: [], datasets: [{ label: 'Avg speed (km/h)', data: [],
+      borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.08)',
+      tension: 0.35, fill: true, pointRadius: 2.5 }]},
+    options: chartBase
   });
 
-  congestionChart = new Chart(document.getElementById('congestionChart'), {
+  congestionChart = new Chart($('congestionChart'), {
     type: 'line',
-    data: { labels: [], datasets: [{
-      label: 'Avg congestion', data: [],
-      borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.1)',
-      tension: 0.3, fill: true, pointRadius: 3
-    }]},
-    options: { ...chartDefaults,
-      scales: { ...chartDefaults.scales,
-        y: { ...chartDefaults.scales.y, min: 0, max: 1 } } }
+    data: { labels: [], datasets: [{ label: 'Avg congestion', data: [],
+      borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.08)',
+      tension: 0.35, fill: true, pointRadius: 2.5 }]},
+    options: { ...chartBase, scales: { ...chartBase.scales,
+      y: { ...chartBase.scales.y, min: 0, max: 1 } } }
   });
 }
 
 const history = { time: [], speed: [], congestion: [] };
 
-function updateCharts(segments, summary) {
-  if (!segments || segments.length === 0) return;
-
-  // bar chart sorted same as segment cards
-  const sorted = [...segments].sort((a, b) => b.congestionIndex - a.congestionIndex);
-  barChart.data.labels = sorted.map(s => 'Seg ' + s.segmentId);
-  barChart.data.datasets[0].data = sorted.map(s => s.congestionIndex);
+function updateCharts(segs, summary) {
+  if (!segs || segs.length === 0) return;
+  const sorted = [...segs].sort((a, b) => b.congestionIndex - a.congestionIndex);
+  barChart.data.labels             = sorted.map(s => 'Seg ' + s.segmentId);
+  barChart.data.datasets[0].data   = sorted.map(s => s.congestionIndex);
   barChart.update();
 
-  const avgSpeed = summary?.avgSpeed
-    ?? segments.reduce((sum, s) => sum + s.avgSpeed, 0) / segments.length;
-  const avgCong  = summary?.avgCongestion
-    ?? segments.reduce((sum, s) => sum + s.congestionIndex, 0) / segments.length;
+  const avgSpeed = summary?.avgSpeed ?? segs.reduce((s, x) => s + x.avgSpeed, 0) / segs.length;
+  const avgCong  = summary?.avgCongestion ?? segs.reduce((s, x) => s + x.congestionIndex, 0) / segs.length;
 
-  const timeLabel = new Date().toLocaleTimeString();
-  history.time.push(timeLabel);
+  history.time.push(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
   history.speed.push(avgSpeed);
   history.congestion.push(avgCong);
+  if (history.time.length > 15) { history.time.shift(); history.speed.shift(); history.congestion.shift(); }
 
-  if (history.time.length > 15) {
-    history.time.shift(); history.speed.shift(); history.congestion.shift();
+  speedChart.data.labels = congestionChart.data.labels = history.time;
+  speedChart.data.datasets[0].data     = history.speed;
+  congestionChart.data.datasets[0].data = history.congestion;
+  speedChart.update(); congestionChart.update();
+}
+
+// ─── VIOLATIONS ────────────────────────────────────────────
+function pn(v, key) {
+  // handles both camelCase (from .NET camelCase serializer) and PascalCase
+  const camel = key.charAt(0).toLowerCase() + key.slice(1);
+  return v[camel] ?? v[key];
+}
+
+function mergeViolations(incoming) {
+  let added = 0;
+  for (const v of incoming) {
+    const id = pn(v, 'Id') ?? pn(v, 'id');
+    if (!allViolations.some(x => (pn(x,'Id') ?? pn(x,'id')) === id)) {
+      allViolations.unshift(v);
+      added++;
+    }
+  }
+  allViolations.sort((a, b) =>
+    new Date(pn(b,'DetectedAt') ?? pn(b,'detectedAt')) -
+    new Date(pn(a,'DetectedAt') ?? pn(a,'detectedAt'))
+  );
+  if (added > 0) renderViolations();
+  return added;
+}
+
+function buildGroupedViolations() {
+
+  const map = new Map();
+
+  for (const v of allViolations) {
+
+    const plate =
+      pn(v,'PlateNumber')
+      ?? pn(v,'plateNumber')
+      ?? 'Unknown';
+
+    if (!map.has(plate)) {
+
+      map.set(plate, {
+        ...v,
+        count: 1
+      });
+
+    } else {
+
+      const existing = map.get(plate);
+
+      existing.count++;
+
+      // keep latest timestamp
+      const existingDate = new Date(
+        pn(existing,'DetectedAt')
+        ?? pn(existing,'detectedAt')
+      );
+
+      const currentDate = new Date(
+        pn(v,'DetectedAt')
+        ?? pn(v,'detectedAt')
+      );
+
+      if (currentDate > existingDate) {
+
+        existing.DetectedAt =
+          pn(v,'DetectedAt')
+          ?? pn(v,'detectedAt');
+
+        existing.SpeedKmh =
+          pn(v,'SpeedKmh')
+          ?? pn(v,'speedKmh');
+
+        existing.RoadId =
+          pn(v,'RoadId')
+          ?? pn(v,'roadId');
+      }
+    }
   }
 
-  speedChart.data.labels = history.time;
-  speedChart.data.datasets[0].data = history.speed;
-  speedChart.update();
+  groupedViolations =
+    Array.from(map.values());
 
-  congestionChart.data.labels = history.time;
-  congestionChart.data.datasets[0].data = history.congestion;
-  congestionChart.update();
+  return groupedViolations;
 }
 
-// ─── LAST UPDATED ─────────────────────────────────────────────
+function renderViolations() {
+  const tbody = $('violationsTbody');
+
+  // summary stats in drawer header
+  $('drawerTotal').textContent = allViolations.length;
+  if (allViolations.length > 0) {
+    const maxSpeed = Math.max(...allViolations.map(v => pn(v,'SpeedKmh') ?? pn(v,'speedKmh') ?? 0));
+    $('drawerMax').textContent  = maxSpeed.toFixed(1) + ' km/h';
+    $('drawerLast').textContent = timeAgo(pn(allViolations[0],'DetectedAt') ?? pn(allViolations[0],'detectedAt'));
+  }
+
+  if (allViolations.length === 0) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No violations recorded yet</td></tr>';
+    return;
+  }
+  const display = buildGroupedViolations();
+  tbody.innerHTML = display.map(v => {
+    const plate   = pn(v,'PlateNumber') ?? pn(v,'plateNumber') ?? '—';
+    const speed   = (pn(v,'SpeedKmh')  ?? pn(v,'speedKmh')  ?? 0).toFixed(1);
+    const road    = pn(v,'RoadId')     ?? pn(v,'roadId')     ?? '—';
+    const time    = fmtTime(pn(v,'DetectedAt') ?? pn(v,'detectedAt'));
+    return `
+      <tr>
+        <td class="plate-cell">${plate}</td>
+        <td><strong>${v.count}</strong></td>
+        <td class="speed-cell">${speed} km/h</td>
+        <td>${road}</td>
+        <td>${time}</td>
+      </tr>`;
+  }).join('');
+
+  // keep summary metric in sync
+  const metricEl = $('summaryCards')?.querySelector('.metric-value:last-child');
+  if (metricEl) metricEl.textContent = allViolations.length;
+}
+
+function updateViolationsBadge() {
+  const badge = $('violationsBadge');
+  const btn   = $('violationsBtn');
+  if (unreadCount > 0) {
+    badge.textContent = unreadCount;
+    badge.classList.remove('hidden');
+    btn.classList.add('has-unread');
+  } else {
+    badge.classList.add('hidden');
+    btn.classList.remove('has-unread');
+  }
+}
+
+// ─── DRAWER ────────────────────────────────────────────────
+function openDrawer() {
+  drawerOpen = true;
+  $('violationsDrawer').classList.add('open');
+  $('drawerOverlay').classList.add('visible');
+  unreadCount = 0;
+  updateViolationsBadge();
+}
+
+function closeDrawer() {
+  drawerOpen = false;
+  $('violationsDrawer').classList.remove('open');
+  $('drawerOverlay').classList.remove('visible');
+}
+
+// ─── TOASTS ────────────────────────────────────────────────
+function showViolationToast(v) {
+  const plate = pn(v,'PlateNumber') ?? pn(v,'plateNumber') ?? '—';
+  const speed = (pn(v,'SpeedKmh')  ?? pn(v,'speedKmh')  ?? 0).toFixed(1);
+  const road  = pn(v,'RoadId')     ?? pn(v,'roadId')     ?? '—';
+
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.innerHTML = `
+    <div class="toast-label">⚠ Speed violation — ${road}</div>
+    <div class="toast-plate">${plate}</div>
+    <div class="toast-detail">${speed} km/h detected</div>
+  `;
+  toast.onclick = () => { openDrawer(); toast.remove(); };
+  $('toastContainer').appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.animation = 'toastOut 0.25s ease forwards';
+    setTimeout(() => toast.remove(), 260);
+  }, 4500);
+}
+
+// ─── LAST UPDATED ──────────────────────────────────────────
 function markUpdated() {
-  document.getElementById('lastUpdated').textContent =
-    'Updated ' + new Date().toLocaleTimeString();
+  $('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
-// ─── SIGNALR ──────────────────────────────────────────────────
+// ─── SIGNALR ───────────────────────────────────────────────
 const connection = new signalR.HubConnectionBuilder()
   .withUrl("http://localhost:5052/trafficHub")
   .withAutomaticReconnect()
   .build();
 
-connection.onreconnecting(() => {
-  document.getElementById('statusDot').classList.add('disconnected');
-});
-connection.onreconnected(() => {
-  document.getElementById('statusDot').classList.remove('disconnected');
-});
-connection.onclose(() => {
-  document.getElementById('statusDot').classList.add('disconnected');
-});
+connection.onreconnecting(() => $('statusDot').classList.add('disconnected'));
+connection.onreconnected(()  => $('statusDot').classList.remove('disconnected'));
+connection.onclose(()        => $('statusDot').classList.add('disconnected'));
 
-connection.on("SegmentsUpdated", (segments) => {
-  if (!segments || segments.length === 0) return;
-  latestSegments = segments;
-  renderSegments(segments);
-  // patch worstSegment in summary using live data
+connection.on("SegmentsUpdated", segs => {
+  if (!segs || segs.length === 0) return;
+  latestSegments = segs;
+  renderSegments(segs);
   if (latestSummary) {
-    latestSummary = { ...latestSummary, worstSegment: getWorstSegmentId(segments) };
-    renderSummary(latestSummary, segments);
+    latestSummary = { ...latestSummary, worstSegment: getWorstSegmentId(segs) };
+    renderSummary(latestSummary, segs);
   }
   updateCharts(latestSegments, latestSummary);
   markUpdated();
 });
 
-connection.on("SummaryUpdated", (summary) => {
+connection.on("SummaryUpdated", summary => {
   latestSummary = summary;
   renderSummary(summary, latestSegments);
 });
 
-connection.on("LightUpdated", (light) => {
-  renderTrafficLight(light);
+connection.on("LightUpdated", light => renderTrafficLight(light));
+
+connection.on("ReceiveViolations", violations => {
+  const added = mergeViolations(violations);
+  if (added > 0) {
+    if (!drawerOpen) {
+      unreadCount += added;
+      updateViolationsBadge();
+      violations.slice(0, 3).forEach(v => showViolationToast(v));  // max 3 toasts at once
+    }
+    renderSummary(latestSummary, latestSegments);  // refresh "violations today" metric
+  }
 });
 
 async function startSignalR() {
@@ -542,22 +1017,22 @@ async function startSignalR() {
     await connection.start();
     console.log("SignalR connected");
   } catch (err) {
-    console.warn("SignalR failed:", err);
-    document.getElementById('statusDot').classList.add('disconnected');
+    console.warn("SignalR start failed:", err);
+    $('statusDot').classList.add('disconnected');
   }
 }
 
-// ─── POLLING (safety net — always runs) ───────────────────────
-async function updateDashboard() {
+// ─── POLLING (safety net) ──────────────────────────────────
+async function pollAll() {
   try {
-    const [segments, summary, light] = await Promise.all([
+    const [segs, summary, light] = await Promise.all([
       fetchSegments(), fetchSummary(), fetchLight()
     ]);
-    latestSegments = segments;
+    latestSegments = segs;
     latestSummary  = summary;
-    renderSummary(summary, segments);
-    renderSegments(segments);
-    updateCharts(segments, summary);
+    renderSummary(summary, segs);
+    renderSegments(segs);
+    updateCharts(segs, summary);
     renderTrafficLight(light);
     markUpdated();
   } catch (err) {
@@ -565,11 +1040,23 @@ async function updateDashboard() {
   }
 }
 
-// ─── INIT ──────────────────────────────────────────────────────
+async function pollViolations() {
+  try {
+    const data  = await fetchViolations();
+    const added = mergeViolations(data);
+    if (added > 0) renderSummary(latestSummary, latestSegments);
+  } catch (err) {
+    console.warn("Violations poll error:", err);
+  }
+}
+
+// ─── INIT ──────────────────────────────────────────────────
 function init() {
   initCharts();
-  updateDashboard();
-  setInterval(updateDashboard, 5000);
+  pollAll();
+  pollViolations();
+  setInterval(pollAll,       5_000);
+  setInterval(pollViolations, 15_000);
   startSignalR();
 }
 

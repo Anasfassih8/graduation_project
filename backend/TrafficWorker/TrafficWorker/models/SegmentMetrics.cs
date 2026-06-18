@@ -14,5 +14,6 @@ namespace TrafficWorker.models
         public double CongestionIndex { get; set; }
         public double RecommendedSpeed { get; set; }
         public int VehicleCount { get; set; }
+        public bool IsIncident { get; set; }
     }
 }

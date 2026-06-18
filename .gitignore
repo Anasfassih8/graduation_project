@@ -49,5 +49,14 @@ Thumbs.db
 *.nupkg
 packages/
 
+# Ignore screenshots folder
+new_folder/screenshots/
+
+*.mp4
+*.jpg
+
+# Or ignore all folders named screenshots anywhere
+screenshots/
+
 appsettings.Development.json
 appsettings.Local.json

@@ -13,8 +13,10 @@ namespace TrafficWorker.services
         private const double MaxDensity = 0.3;
         private const double MinX = 0.0;
         private const double MinValidSpeed = 2.0; // below this = tracking artifact
+        private const double IncidentDropThreshold = 0.50;
 
         private readonly Dictionary<int, Dictionary<int, VehicleEvent>> _segments = new();
+        private readonly Dictionary<int, double> _previousSpeeds = new(); // persists between ticks
         private readonly TrafficPolicyService _policy = new();
         private readonly object _lock = new();
 
@@ -49,6 +51,7 @@ namespace TrafficWorker.services
                     if (vehicles.Count == 0) continue;
 
                     int count = vehicles.Count;
+                    int segmentId = segment.Key;
 
                     // exclude tracking artifacts from speed calculation
                     var movingVehicles = vehicles
@@ -79,6 +82,28 @@ namespace TrafficWorker.services
                         ci *= 0.5;
 
                     double recommendedSpeed = adjustedSpeed * (1 - ci * 0.7);
+
+                    // ── INCIDENT DETECTION ─────────────────────────────
+                    bool isIncident = false;
+                    if (_previousSpeeds.TryGetValue(segmentId, out double prevSpeed)
+                        && prevSpeed > 5.0   // ignore near-zero baselines
+                        && avgSpeed > 0)    // segment has moving vehicles
+                    {
+                        double drop = (prevSpeed - avgSpeed) / prevSpeed;
+                        if (drop >= IncidentDropThreshold)
+                        {
+                            isIncident = true;
+                            Console.WriteLine(
+                                $"⚠️  INCIDENT detected on Segment {segmentId} | " +
+                                $"Speed dropped {drop:P0} ({prevSpeed:F1} → {avgSpeed:F1} km/h)"
+                            );
+                        }
+                    }
+
+                    // always update previous speed (even if incident — so next tick compares correctly)
+                    _previousSpeeds[segmentId] = avgSpeed;
+                    // ───────────────────────────────────────────────────
+
 
                     results.Add(new SegmentMetrics
                     {
